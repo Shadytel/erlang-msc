@@ -90,7 +90,7 @@
 -define(ELEM_CAUSE,		2#00000100).
 -define(ELEM_CELL_ID,		2#00000101).
 -define(ELEM_PRIORITY,		2#00000110).
--define(ELEM_L3_HEADER,		2#00000111).
+-define(ELEM_L3_HEADER,		2#00000111).	%% which is info?
 -define(ELEM_IMSI,		2#00001000).
 -define(ELEM_TMSI,		2#00001001).
 -define(ELEM_CRYPTO_INFO,	2#00001010).
@@ -102,7 +102,7 @@
 -define(ELEM_CLASSMARK_IND_3,	2#00010011).
 -define(ELEM_INTERFER_BAND,	2#00010100).
 -define(ELEM_RR_CAUSE,		2#00010101).
--define(ELEM_L3_INFO,		2#00010111).
+-define(ELEM_L3_HEAD,		2#00010111).	%% which is info?
 -define(ELEM_DLCI,		2#00011000).
 -define(ELEM_DOWNLINK_DTX,	2#00011001).
 -define(ELEM_CELL_ID_LIST,	2#00011010).
@@ -138,5 +138,43 @@
 -define(ELEM_EMLPP_PRIO,	2#00111000).
 -define(ELEM_CONF_EVOL_IND,	2#00111001).
 
-
 -record(cell_id, { mcc, mnc, lac, cid }).
+-record(circuit_id, { pcm, timeslot }).
+-record(cause, { class, value }).
+-record(imsi, { number }).
+-record(tmsi, { number }).
+-record(ms_count, { number }).
+-record(l3, { protocol, transaction, body }).
+-record(crypto_info, { a50, a51, a52, a53, a54, a55, a56, a57, key }).
+-record(chan_type, { mode, ratetype, versions }).
+-record(period, { period }).
+-record(ext_rsrc, { tarr, mode }).
+-record(rsrcs_available, { halfrate, fullrate }).
+-record(priority, { can_preempt, priority, allow_queueing, vulnerable }).
+-record(classmark1, { classmark }).
+-record(classmark2, { classmark }).
+-record(classmark3, { classmark }).
+-record(interference, { band_mask }).
+-record(dlci, { dlci }).
+-record(dtx, { dtx }).
+-record(rsrc_ind_method, { method }).
+-record(cic_list, { circuits }).
+-record(diag, { index, bit, message }).
+-record(chan_kind, { mode, count }).
+-record(cipher_rsp_mode, { mode }).
+-record(chan_needed, { type }).
+-record(trace_type, { type }).
+-record(trigger_id, { id }).
+-record(trace_ref, { ref }).
+-record(trans_id, { id }).
+-record(ms_id, { imei, imeisv }).
+-record(omc_id, { id }).
+-record(forward, { ind }).
+-record(crypto_chosen, { a50, a51, a52, a53, a54, a55, a56, a57, key }).
+-record(circuit_pool, { pool }).
+-record(time_ind, { seconds }).
+-record(queue_ind, { advice }).
+-record(speech_type, { type }).
+-record(assignment_require, { mode }).
+-record(group_ref, { ref }).
+-record(evol_ind, { smi_count }).
