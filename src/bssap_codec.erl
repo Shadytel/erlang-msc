@@ -34,32 +34,33 @@ parse_bssmap(?BSSMAP_COMPL_L3_INF, DataBin) ->
     ok.
 
 parse_el_list(DataBin) ->
-    parse_el_list(DataBin, []).
+    lists:reverse(parse_el_list(DataBin, [])).
 
 parse_el_list(<<>>, List) ->
     List;
 parse_el_list(DataBin, List) ->
     {ok, Length, Element} = parse_el(DataBin),
-    parse_el_list(binary:part(DataBin, Length), [List|Element]).
+    parse_el_list(binary:part(DataBin, Length, byte_size(DataBin)-Length), [Element|List]).
 
 parse_el(DataBin) ->
     <<Element:8, Rest/binary>> = DataBin,
     parse_el(Element, Rest).
 
 parse_el(?ELEM_CELL_ID, DataBin) ->
-    <<Length:8, _:4, Type:4, Rest/bytes>> = DataBin,
+    <<Len:8, _:4, Type:4, Rest/bytes>> = DataBin,
+    Length = Len+3,
     case Type of
 	2#0000 ->
 	    % cell global id is used
-	    <<MCC_2:4, MCC_1:4, 2#1111:4, MCC_3:4, MNC_2:4, MNC_1:4, LAC:16/big, CI:16/big>> = Rest,
+	    <<MCC_2:4, MCC_1:4, 2#1111:4, MCC_3:4, MNC_2:4, MNC_1:4, LAC:16/big, CI:16/big, _/bytes>> = Rest,
 	    MCC = MCC_3 + MCC_2*10 + MCC_1*100,
 	    MNC = MNC_2 + MNC_1*10,
 	    {ok, Length, #cell_id{mcc=MCC, mnc=MNC, cid=CI, lac=LAC}};
 	2#0001 ->
-	    <<LAC:16/big, CI:16/big>> = Rest,
+	    <<LAC:16/big, CI:16/big, _/bytes>> = Rest,
 	    {ok, Length, #cell_id{cid=CI, lac=LAC}};
 	2#0010 ->
-	    <<CI:16/big>> = Rest,
+	    <<CI:16/big, _/bytes>> = Rest,
 	    {ok, Length, #cell_id{cid=CI}};
 	2#0011 ->
 	    {ok, Length, #cell_id{}}
