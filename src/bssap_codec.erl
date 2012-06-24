@@ -3,22 +3,16 @@
 -include_lib("emsc/include/bssmap.hrl").
 
 parse_message(DataBin) ->
-    Discrim = binary:first(DataBin),
-    Parsed = parse_msgt(Discrim, DataBin),
-    case Discrim of
-	16#00 ->
-	    {ok, bssmap, Parsed};
-	16#01 ->
-	    {ok, dtap, Parsed}
-    end.
+    <<Discrim:8, Message/binary>> = DataBin,
+    parse_msgt(Discrim, Message).
 
 % BSSMAP message
 parse_msgt(?SCCP_DISCRIM_BSSMAP, DataBin) ->
     <<_:8, Length:8, Type:8, Remain/binary>> = DataBin,
-    ok;
+    {ok, bssmap, parse_bssmap(Type, Remain)};
 parse_msgt(?SCCP_DISCRIM_DTAP, DataBin) ->
     <<_:8, DLCI:8, Length:8, Remain/binary>> = DataBin,
-    ok.
+    {ok, dtap, DataBin}.
 
 %parse_bssmap(?BSSMAP_ASSIGN_REQ, DataBin) ->
 %    {ok, ChanLen, ChanType} = parse_el_channeltype(DataBin),
@@ -26,9 +20,12 @@ parse_msgt(?SCCP_DISCRIM_DTAP, DataBin) ->
 %    {ok, PrioLen, Priority} = parse_el_priority(binary:part(DataBin, ChanLen+L3Len, 3)),
 %    {ok, CICLen, CIC} = parse_el_cic(binary:part(DataBin, ChanLen+L3Len+PrioLen, 3)),
 %    {ok, 
+
 parse_bssmap(?BSSMAP_COMPL_L3_INF, DataBin) ->
     Elements = parse_el_list(DataBin),
-    Elements.
+    Elements;
+parse_bssmap(Type, Bin) ->
+    {Type, parse_el_list(Bin)}.
 
 parse_el_list(DataBin) ->
     lists:reverse(parse_el_list(DataBin, [])).
