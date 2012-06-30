@@ -3,7 +3,6 @@
 -include_lib("osmo_ss7/include/osmo_ss7.hrl").
 -include_lib("emsc/include/ipaccess.hrl").
 -include_lib("osmo_ss7/include/sccp.hrl").
--include_lib("emsc/include/sccp.hrl").
 
 -export([boot_link/1, reg_connect_callback/1, reg_dgram_callback/1, connect/1]).
 
