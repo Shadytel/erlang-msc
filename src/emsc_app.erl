@@ -17,16 +17,6 @@ start(_App, _Type) ->
     code:load_file(ipa_proto),
     ipa_proto:init(),
     ipa_proto:start_listen(6666, 1, [], spawn(emsc_app, link_state_handler, [])),
-
-    % well, that's a start, I guess.
-
-    % TODO:
-
-% register SCCP streams with OpenBSC:
-% <000b> osmo_bsc_sccp.c:205 Not connected to a MSC. Not forwarding data.
-
-% in this file, register and handle streams for A-protocols
-
     ok.
 
 stop(_State) ->

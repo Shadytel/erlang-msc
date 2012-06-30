@@ -2,17 +2,22 @@
 -author('Duncan Smith <Duncan@xrtc.net>').
 -include_lib("emsc/include/bssmap.hrl").
 
-parse_message(DataBin) ->
-    <<Discrim:8, Message/binary>> = DataBin,
-    parse_msgt(Discrim, Message).
+-export([parse_message/1, parse_bssmap/2]).
+
 
 % BSSMAP message
-parse_msgt(?SCCP_DISCRIM_BSSMAP, DataBin) ->
-    <<_:8, Length:8, Type:8, Remain/binary>> = DataBin,
-    {ok, bssmap, parse_bssmap(Type, Remain)};
+parse_message(<<?SCCP_DISCRIM_BSSMAP:8, Length:8, Message:Length/binary>>) ->
+%    {ok, bssmap, bssmap_codec:parse_bssmap_msg(Remain)};
+    {ok, bssmap, parse_bssmap(type, Message)};
+parse_message(<<Discrim:8, Message/binary>>) ->
+    parse_msgt(Discrim, Message).
+
 parse_msgt(?SCCP_DISCRIM_DTAP, DataBin) ->
-    <<_:8, DLCI:8, Length:8, Remain/binary>> = DataBin,
-    {ok, dtap, DataBin}.
+    <<DLCI:8, Length:8, Remain/binary>> = DataBin,
+    {ok, dtap, DataBin};
+parse_msgt(Discrim, Bin) ->
+    {ok, unknown, Discrim, Bin}.
+
 
 %parse_bssmap(?BSSMAP_ASSIGN_REQ, DataBin) ->
 %    {ok, ChanLen, ChanType} = parse_el_channeltype(DataBin),
