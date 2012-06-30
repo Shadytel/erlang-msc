@@ -1,22 +1,9 @@
--module(bssap_codec).
+-module(bssmap_codec).
 -author('Duncan Smith <Duncan@xrtc.net>').
 -include_lib("emsc/include/bssmap.hrl").
 
 -export([parse_message/1, parse_bssmap/1]).
 
-
-% BSSMAP message
-parse_message(<<?SCCP_DISCRIM_BSSMAP:8, Length:8, Message:Length/binary>>) ->
-%    {ok, bssmap, bssmap_codec:parse_bssmap_msg(Remain)};
-    {ok, bssmap, parse_bssmap(Message)};
-parse_message(<<Discrim:8, Message/binary>>) ->
-    parse_msgt(<<Discrim, Message>>).
-
-parse_msgt(<<?SCCP_DISCRIM_DTAP:8, DataBin/binary>>) ->
-    <<DLCI:8, Length:8, Remain/binary>> = DataBin,
-    {ok, dtap, DataBin};
-parse_msgt(<<Discrim:8, Bin/binary>>) ->
-    {ok, unknown, Discrim, Bin}.
 
 
 %parse_bssmap(?BSSMAP_ASSIGN_REQ, DataBin) ->
