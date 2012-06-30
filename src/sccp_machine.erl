@@ -36,7 +36,6 @@ sccp_loop(Socket) ->
 	    LocalRef = proplists:get_value(dst_local_ref, Params),
 	    RemoteRef = proplists:get_value(src_local_ref, Params),
 	    Controller = get({sccp_local_ref, LocalRef}),
-	    io:format("Attemping to parse ~p~n", [{Type, Class, Params}]),
 	    try sccp_receive_dispatch(Type, Class, Params, Controller)
 	    catch
 		X:Y ->
@@ -49,7 +48,7 @@ sccp_loop(Socket) ->
 			_ when is_integer(LocalRef), is_integer(RemoteRef) ->
 				% not sure if this is technically the
 				% right cause code, but it'll do.
-			    self() ! {sccp_release,
+			    self() ! {sccp_released,
 				      LocalRef,
 				      RemoteRef,
 				      ?SCCP_CAUSE_REL_SCCP_FAILURE};
@@ -69,19 +68,19 @@ sccp_loop(Socket) ->
 					     {src_local_ref, LocalRef},
 					     {protocol_class, {2,0}}]},
 	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg));
-	{sccp_release, LocalRef, RemoteRef, Cause} ->
+	{sccp_released, LocalRef, RemoteRef, Cause} ->
 	    % Release from MSC direction
-	    io:format("Sccp releasing ref=~p/~p~n", [LocalRef, RemoteRef]),
 	    Msg = {sccp_msg, ?SCCP_MSGT_RLSD, [{src_local_ref, LocalRef},
 					       {dst_local_ref, RemoteRef},
 					       {release_cause, Cause}]},
-	    erase({sccp_local_ref, LocalRef}),
+	    io:format("Sccp releasing ref=~p/~p: ~p~n", [LocalRef, RemoteRef, Msg]),
 	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg));
 	{sccp_release_compl, LocalRef, RemoteRef} ->
 	    % Release from BSS direction
 	    io:format("Sccp release complete ref=~p/~p~n", [LocalRef, RemoteRef]),
 	    Msg = {sccp_msg, ?SCCP_MSGT_RLC, [{src_local_ref, LocalRef},
 					      {dst_local_ref, RemoteRef}]},
+	    erase({sccp_local_ref, LocalRef}),
 	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg));
 	{sccp_ping, To, From} ->
 	    io:format("Sccp ref=~p/~p Sending ping~n", [From, To]),
@@ -198,7 +197,7 @@ sccp_socket_loop(incoming, LocalRef, Downlink) ->
 	    sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink);
 	{_, LocalRef, RemoteRef} ->
 	    io:format("Sccp ref=~p/~p: NOPE~n", [LocalRef, RemoteRef]),
-	    Downlink ! {sccp_release, LocalRef, RemoteRef, ?SCCP_CAUSE_REL_INCONS_CONN_DAT}
+	    Downlink ! {sccp_released, LocalRef, RemoteRef, ?SCCP_CAUSE_REL_INCONS_CONN_DAT}
     end.
 
 % Choose or spawn an uplink process, then continue with the
@@ -223,7 +222,7 @@ sccp_socket_loop(outgoing, LocalRef, RemoteRef, Downlink, Uplink) ->
 	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	Msg ->
 	    io:format("Sccp ref=~p/~p: Failure to confirm (~p), killing~n", [LocalRef, RemoteRef, Msg]),
-	    Downlink ! {sccp_release, LocalRef, RemoteRef}
+	    Downlink ! {sccp_released, LocalRef, RemoteRef, ?SCCP_CAUSE_REL_SCCP_FAILURE}
     after 10000 -> % provisional
 	    io:format("Sccp ref=~p/~p: stale, killing myself/5~n", [LocalRef, RemoteRef]),
 	    self() ! {kill}
