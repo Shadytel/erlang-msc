@@ -2,20 +2,20 @@
 -author('Duncan Smith <Duncan@xrtc.net>').
 -include_lib("emsc/include/bssmap.hrl").
 
--export([parse_message/1, parse_bssmap/2]).
+-export([parse_message/1, parse_bssmap/1]).
 
 
 % BSSMAP message
 parse_message(<<?SCCP_DISCRIM_BSSMAP:8, Length:8, Message:Length/binary>>) ->
 %    {ok, bssmap, bssmap_codec:parse_bssmap_msg(Remain)};
-    {ok, bssmap, parse_bssmap(type, Message)};
+    {ok, bssmap, parse_bssmap(Message)};
 parse_message(<<Discrim:8, Message/binary>>) ->
-    parse_msgt(Discrim, Message).
+    parse_msgt(<<Discrim, Message>>).
 
-parse_msgt(?SCCP_DISCRIM_DTAP, DataBin) ->
+parse_msgt(<<?SCCP_DISCRIM_DTAP:8, DataBin/binary>>) ->
     <<DLCI:8, Length:8, Remain/binary>> = DataBin,
     {ok, dtap, DataBin};
-parse_msgt(Discrim, Bin) ->
+parse_msgt(<<Discrim:8, Bin/binary>>) ->
     {ok, unknown, Discrim, Bin}.
 
 
@@ -26,10 +26,10 @@ parse_msgt(Discrim, Bin) ->
 %    {ok, CICLen, CIC} = parse_el_cic(binary:part(DataBin, ChanLen+L3Len+PrioLen, 3)),
 %    {ok, 
 
-parse_bssmap(?BSSMAP_COMPL_L3_INF, DataBin) ->
+parse_bssmap(<<?BSSMAP_COMPL_L3_INF:8, DataBin/binary>>) ->
     Elements = parse_el_list(DataBin),
     Elements;
-parse_bssmap(Type, Bin) ->
+parse_bssmap(<<Type:8, Bin/binary>>) ->
     {Type, parse_el_list(Bin)}.
 
 parse_el_list(DataBin) ->
@@ -111,10 +111,10 @@ parse_el(?ELEM_PRIORITY, Bin) ->
     {ok, 2, #priority{ can_preempt=Pci, priority=Level, allow_queueing=Queueing, vulnerable=Vuln }};
 parse_el(?ELEM_CLASSMARK_IND_2, Bin) ->
     % XXX I'm not yet decoding the classmark, see 3.2.2.19 of ETSI GSM TS 08.08.
-    <<Len:8, Classmark:24, _/binary>> = Bin,
+    <<Len:8, Classmark:3/bytes, _/binary>> = Bin,
     {ok, Len+2, #classmark2{ classmark=Classmark }};
 parse_el(?ELEM_CLASSMARK_IND_3, Bin) ->
-    <<Len:8, Classmark:24, _/binary>> = Bin,
+    <<Len:8, Classmark:3/bytes, _/binary>> = Bin,
     {ok, Len+2, #classmark3{ classmark=Classmark }};
 parse_el(?ELEM_INTERFER_BAND, Bin) ->
     % Not yet decoding
@@ -141,7 +141,7 @@ parse_el(?ELEM_RSRC_IND_METH, Bin) ->
     <<_:4, Method:4, _/binary>> = Bin,
     {ok, 2, #rsrc_ind_method{ method=Method }};
 parse_el(?ELEM_CLASSMARK_IND_1, Bin) ->
-    <<Mark:8, _/binary>> = Bin,
+    <<Mark:1/bytes, _/binary>> = Bin,
     {ok, 2, #classmark1{ classmark=Mark }};
 parse_el(?ELEM_CIC_LIST, Bin) ->
     <<Len:8, Range:8, Rest/binary>> = Bin,
