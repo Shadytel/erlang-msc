@@ -2,7 +2,7 @@
 -author('Duncan Smith <Duncan@xrtc.net>').
 -include_lib("emsc/include/bssmap.hrl").
 
--export([parse_message/1, parse_bssmap/1]).
+-export([parse_bssmap/1]).
 
 
 

@@ -12,6 +12,7 @@ boot_link(Socket) ->
     Looper = spawn(fun () -> sccp_loop(Socket) end),
     Looper ! {Socket},
     register(sccp_loop, Looper),
+    reg_connect_callback(fun datagram_print_loop/0),
     ipa_proto:register_stream(Socket, ?IPAC_PROTO_SCCP, {callback_fn, fun rx_message/4, []}),
     io:format("Sending hello~n", []),
     ipa_proto:send(Socket, 254, << 6 >>),
@@ -47,10 +48,13 @@ rx_message(_Socket, _Port, Data, []) ->
 sccp_loop(Socket) ->
     receive
 	{reg_connect_callback, Fun} ->
+	    io:format("Registering connect handler ~p for SCCP~n", [Fun]),
 	    put(connect_callback, Fun);
 	{reg_dgram_callback, Fun} ->
+	    io:format("Registering datagram handler ~p for SCCP~n", [Fun]),
 	    put(dgram_callback, Fun);
 	{connect, Fun} ->
+	    io:format("SCCP connecting using handler ~p~n", [Fun]),
 	    Self = self(),
 	    LocalRef = get_cur_local_ref(),
 	    Controller = spawn(fun() -> sccp_socket_loop(outgoing, LocalRef, undefined, Self, spawn(Fun)) end),
@@ -135,7 +139,8 @@ sccp_receive_dispatch(?SCCP_MSGT_CR, {2,0}, Params, _) ->
     LocalRef = get_cur_local_ref(),
     Callback = get(connect_callback),
     if (is_function(Callback)) ->
-	    Pid = spawn(Callback);
+	    Pid = spawn(Callback),
+	    io:format("Spawned into ~p~n", [Pid]);
        true ->
 	    Pid = self()
     end,
@@ -244,9 +249,12 @@ sccp_socket_loop(incoming, LocalRef, undefined, Downlink, Uplink) ->
 % Choose or spawn an uplink process, then continue with the
 % connection.
 sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, undefined) ->
-    Downlink ! {sccp_connect_confirm, LocalRef, RemoteRef},
     Uplink = spawn(fun datagram_print_loop/0), % provisional
     io:format("Sccp ref=~p/~p: accepting from ~p into ~p~n", [LocalRef, RemoteRef, Downlink, Uplink]),
+    sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, Uplink);
+
+sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, Uplink) ->
+    Downlink ! {sccp_connect_confirm, LocalRef, RemoteRef},
     sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 
 sccp_socket_loop(outgoing, LocalRef, undefined, Downlink, Uplink) ->
@@ -291,6 +299,7 @@ sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink) ->
 	{close, Cause} ->
 % by GSM 08.06 sec 6.2, this can only be initiated by the MSC/network side.
 	    io:format("Sccp ref=~p/~p: Killing myself~n", [LocalRef, RemoteRef]),
+	    Uplink ! {sccp_released, LocalRef, RemoteRef, Cause},
 	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{kill} ->
 	    io:format("Sccp ref=~p/~p: Killing myself~n", [LocalRef, RemoteRef]),
@@ -304,8 +313,8 @@ sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink) ->
 datagram_print_loop() ->
     io:format("Getting new packet ...~n"),
     receive
-	{sccp_message_in, Msg} ->
-	    io:format("Got message ~w~n", [Msg]),
+	{Name, Msg} ->
+	    io:format("Got ~w message ~p~n", [Name, Msg]),
 	    datagram_print_loop()
     end.
 

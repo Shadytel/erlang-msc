@@ -1,8 +1,3 @@
-
-% sccp discriminator types
--define(SCCP_DISCRIM_DTAP,	1).
--define(SCCP_DISCRIM_BSSMAP,	0).
-
 % assignment
 -define(BSSMAP_ASSIGN_REQ,	2#00000001).
 -define(BSSMAP_ASSIGN_COMPL,	2#00000010).
