@@ -6,15 +6,14 @@
 
 -export([boot_link/1, reg_connect_callback/1, reg_dgram_callback/1, connect/1]).
 
--export([sccp_loop/1]).
+-export([sccp_loop/0, sccp_loop/1]).
 
 boot_link(Socket) ->
-    Looper = spawn(fun () -> sccp_loop(Socket) end),
-    Looper ! {Socket},
+    Looper = spawn(fun sccp_loop/0),
+    Looper ! {socket, Socket},
     register(sccp_loop, Looper),
-    reg_connect_callback(fun datagram_print_loop/0),
     ipa_proto:register_stream(Socket, ?IPAC_PROTO_SCCP, {callback_fn, fun rx_message/4, []}),
-    io:format("Sending hello~n", []),
+    io:format("Sending ip.access hello~n", []),
     ipa_proto:send(Socket, 254, << 6 >>),
     ok.
 
@@ -45,21 +44,33 @@ rx_message(_Socket, _Port, Data, []) ->
     {ok, Msg} = sccp_codec:parse_sccp_msg(Data),
     Looper ! Msg.
 
+sccp_loop() ->
+    receive
+	{socket, Socket} ->
+	    sccp_machine:sccp_loop(Socket)
+    end.
+
 sccp_loop(Socket) ->
     receive
+	% change socket message
+	{socket, NewSocket} ->
+	    sccp_machine:sccp_loop(NewSocket);
 	{reg_connect_callback, Fun} ->
 	    io:format("Registering connect handler ~p for SCCP~n", [Fun]),
-	    put(connect_callback, Fun);
+	    put(connect_callback, Fun),
+	    sccp_machine:sccp_loop(Socket);
 	{reg_dgram_callback, Fun} ->
 	    io:format("Registering datagram handler ~p for SCCP~n", [Fun]),
-	    put(dgram_callback, Fun);
+	    put(dgram_callback, Fun),
+    	    sccp_machine:sccp_loop(Socket);
 	{connect, Fun} ->
 	    io:format("SCCP connecting using handler ~p~n", [Fun]),
 	    Self = self(),
 	    LocalRef = get_cur_local_ref(),
 	    Controller = spawn(fun() -> sccp_socket_loop(outgoing, LocalRef, undefined, Self, spawn(Fun)) end),
 	    % race condition exists
-	    put({sccp_local_ref, LocalRef}, Controller);
+	    put({sccp_local_ref, LocalRef}, Controller),
+	    sccp_machine:sccp_loop(Socket);
 
 	{sccp_msg, Type, Params} ->
 	    % Find a receiver for this message.  Messages without a
@@ -93,44 +104,50 @@ sccp_loop(Socket) ->
 			    % don't have enough information to make
 			    % into a RELEASED message.
 		    end
-	    end;
+	    end,
+	    sccp_machine:sccp_loop(Socket);
 	{sccp_message_out, LocalRef, RemoteRef, Msg} ->
 	    % send out a message
-	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg));
+	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg)),
+	    sccp_machine:sccp_loop(Socket);
 	{sccp_connect_confirm, LocalRef, RemoteRef} ->
 	    % Connection confirm from MSC direction
 
 	    Msg = {sccp_msg, ?SCCP_MSGT_CC, [{dst_local_ref, RemoteRef},
 					     {src_local_ref, LocalRef},
 					     {protocol_class, {2,0}}]},
-	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg));
+	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg)),
+	    sccp_machine:sccp_loop(Socket);
 	{sccp_released, LocalRef, RemoteRef, Cause} ->
 	    % Release from MSC direction
 	    Msg = {sccp_msg, ?SCCP_MSGT_RLSD, [{src_local_ref, LocalRef},
 					       {dst_local_ref, RemoteRef},
 					       {release_cause, Cause}]},
 	    io:format("Sccp releasing ref=~p/~p: ~p~n", [LocalRef, RemoteRef, Msg]),
-	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg));
+	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg)),
+	    sccp_machine:sccp_loop(Socket);
 	{sccp_release_compl, LocalRef, RemoteRef} ->
 	    % Release from BSS direction
 	    io:format("Sccp release complete ref=~p/~p~n", [LocalRef, RemoteRef]),
 	    Msg = {sccp_msg, ?SCCP_MSGT_RLC, [{src_local_ref, LocalRef},
 					      {dst_local_ref, RemoteRef}]},
 	    erase({sccp_local_ref, LocalRef}),
-	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg));
+	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg)),
+	    sccp_machine:sccp_loop(Socket);
 	{sccp_ping, To, From} ->
 	    Msg = {sccp_msg, ?SCCP_MSGT_IT, [{dst_local_ref, To},
 					     {src_local_ref, From},
 					     {protocol_class, {2,0}},
 					     {seq_segm, 0},
 					     {credit, 0}]},
-	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg));
+	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg)),
+	    sccp_machine:sccp_loop(Socket);
 	{killed, LocalRef} ->
 	    % one of my workers has killed himself
 	    io:format("Removing entry ~p from local worker table~n", [LocalRef]),
-	    erase({sccp_local_ref, LocalRef})
-    end,
-    sccp_machine:sccp_loop(Socket).
+	    erase({sccp_local_ref, LocalRef}),
+	    sccp_machine:sccp_loop(Socket)
+    end.
 
 
     % Connection request from BSS direction
@@ -138,24 +155,19 @@ sccp_receive_dispatch(?SCCP_MSGT_CR, {2,0}, Params, _) ->
     RemoteRef = proplists:get_value(src_local_ref, Params),
     LocalRef = get_cur_local_ref(),
     Callback = get(connect_callback),
-    if (is_function(Callback)) ->
-	    Pid = spawn(Callback),
-	    io:format("Spawned into ~p~n", [Pid]);
-       true ->
-	    Pid = self()
-    end,
+    {ok, Controller} = mobile_fsm:start_link(LocalRef, self()),
     Self = self(),
-    Controller = spawn(fun () -> sccp_socket_loop(incoming, LocalRef, RemoteRef, Self, Pid) end),
+    io:format("Link started using ~p as uplink~n", [Controller]),
     put({sccp_local_ref, LocalRef}, Controller),
     UserData = proplists:get_value(user_data, Params),
-    Controller ! {sccp_connect_request, LocalRef, RemoteRef, UserData};
+    mobile_fsm:incoming(Controller, {sccp_connect_request, LocalRef, RemoteRef, UserData});
 
     % Connection confirm from BSS direction
 sccp_receive_dispatch(?SCCP_MSGT_CC, {2,0}, Params, Controller) ->
     RemoteRef = proplists:get_value(src_local_ref, Params),
     LocalRef = proplists:get_value(dst_local_ref, Params),
     io:format("Connect confirm ~p~n", [RemoteRef]),
-    Controller ! {sccp_connect_confirm, LocalRef, RemoteRef, proplists:get_value(user_data, Params)};
+    mobile_fsm:incoming(Controller, {sccp_connect_confirm, LocalRef, RemoteRef, proplists:get_value(user_data, Params)});
 
     % First phase of disconnect
 sccp_receive_dispatch(?SCCP_MSGT_RLSD, _, Params, Controller) ->
@@ -164,36 +176,37 @@ sccp_receive_dispatch(?SCCP_MSGT_RLSD, _, Params, Controller) ->
     Msg = proplists:get_value(user_data, Params),
     Cause = proplists:get_value(release_cause, Params),
     io:format("Sccp releasing ref=~p/~p~n", [LocalRef, RemoteRef]),
-    Controller ! {sccp_message, LocalRef, RemoteRef, Msg},
-    Controller ! {sccp_released, LocalRef, RemoteRef, Cause};
+    mobile_fsm:incoming(Controller, {sccp_message, LocalRef, RemoteRef, Msg}),
+    mobile_fsm:incoming(Controller, {sccp_released, LocalRef, RemoteRef, Cause});
 
     % Second and final phase of disconnect
 sccp_receive_dispatch(?SCCP_MSGT_RLC, _, Params, Controller) ->
     RemoteRef = proplists:get_value(src_local_ref, Params),
     LocalRef = proplists:get_value(dst_local_ref, Params),
-    Controller ! {sccp_release_compl, LocalRef, RemoteRef};
+    mobile_fsm:incoming(Controller, {sccp_release_compl, LocalRef, RemoteRef});
 
     % Connection-oriented dataframe type 1 from BSS direction
 sccp_receive_dispatch(?SCCP_MSGT_DT1, _, Params, Controller) ->
     LocalRef = proplists:get_value(dst_local_ref, Params),
     MsgBin = proplists:get_value(user_data, Params),
     io:format("Sccp ref=~p/~p DT1=~p~n", [LocalRef, undefined, MsgBin]),
-    Controller ! {sccp_message, LocalRef, undefined, MsgBin};
+    mobile_fsm:incoming(Controller, {sccp_message, LocalRef, undefined, MsgBin});
 
     % Connectionless datagram from BSS direction
 sccp_receive_dispatch(?SCCP_MSGT_UDT, {0,0}, Params, _) ->
     MsgBin = proplists:get_value(user_data, Params),
     Fun = get(dgram_callback),
-    if (is_function(Fun)) ->
-       Pid = spawn(Fun),
-       Pid ! {sccp_message, MsgBin}
-    end;
+%    if (is_function(Fun)) ->
+%       {ok, Pid} = spawn(Fun),
+%       Pid ! {sccp_message, MsgBin}
+%    end,
+    ok;
 
     % "Ping?"
 sccp_receive_dispatch(?SCCP_MSGT_IT, {2,0}, Params, Controller) ->
     RemoteRef = proplists:get_value(src_local_ref, Params),
     LocalRef = proplists:get_value(dst_local_ref, Params),
-    Controller ! {sccp_ping, LocalRef, RemoteRef};
+    mobile_fsm:incoming(Controller, {sccp_ping, LocalRef, RemoteRef});
 
 % *UDTS messages are error responses.  This code is perfect and never
 % generates erroneous messages.  Also, it's not interested in hearing
@@ -205,14 +218,14 @@ sccp_receive_dispatch(?SCCP_MSGT_XUDT, {2,0}, Params, Controller) ->
     From = proplists:get_value(src_local_ref, Params),
     To = proplists:get_value(dst_local_ref, Params),
     MsgBin = proplists:get_value(user_data, Params),
-    Controller ! {sccp_message, To, From, MsgBin};
+    mobile_fsm:incoming(Controller, {sccp_message, To, From, MsgBin});
 
     % Long unitdata
 sccp_receive_dispatch(?SCCP_MSGT_LUDT, {2,0}, Params, Controller) ->
     From = proplists:get_value(src_local_ref, Params),
     To = proplists:get_value(dst_local_ref, Params),
     MsgBin = proplists:get_value(user_data, Params),
-    Controller ! {sccp_message, To, From, MsgBin};
+    mobile_fsm:incoming(Controller, {sccp_message, To, From, MsgBin});
 
     % unknown messages are discarded (GSM 08.06 section 5.3, paragraph regarding Q.712 subclause 1.10)
 sccp_receive_dispatch(Type, Class, Params, _Controller) ->
@@ -246,13 +259,6 @@ sccp_socket_loop(incoming, LocalRef, undefined, Downlink, Uplink) ->
 	    Downlink ! {sccp_released, LocalRef, RemoteRef, ?SCCP_CAUSE_REL_INCONS_CONN_DAT}
     end;
 
-% Choose or spawn an uplink process, then continue with the
-% connection.
-sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, undefined) ->
-    Uplink = spawn(fun datagram_print_loop/0), % provisional
-    io:format("Sccp ref=~p/~p: accepting from ~p into ~p~n", [LocalRef, RemoteRef, Downlink, Uplink]),
-    sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, Uplink);
-
 sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, Uplink) ->
     Downlink ! {sccp_connect_confirm, LocalRef, RemoteRef},
     sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
@@ -280,7 +286,7 @@ sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink) ->
     receive
 	{sccp_message, LocalRef, _, Msg} ->
 	    io:format("Sccp ref=~p/~p: Got a message~n", [LocalRef, RemoteRef]),
-	    Uplink ! {sccp_message_in, Msg},
+	    mobile_fsm:incoming(Uplink, {sccp_message_in, Msg}),
 	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_message, _, LocalRef, Msg} ->
 	    io:format("Sccp ref=~p/~p: Sending a message~n", [LocalRef, RemoteRef]),
@@ -299,7 +305,7 @@ sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink) ->
 	{close, Cause} ->
 % by GSM 08.06 sec 6.2, this can only be initiated by the MSC/network side.
 	    io:format("Sccp ref=~p/~p: Killing myself~n", [LocalRef, RemoteRef]),
-	    Uplink ! {sccp_released, LocalRef, RemoteRef, Cause},
+	    mobile_fsm:incoming(Uplink, {sccp_released, LocalRef, RemoteRef, Cause}),
 	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{kill} ->
 	    io:format("Sccp ref=~p/~p: Killing myself~n", [LocalRef, RemoteRef]),
