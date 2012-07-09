@@ -12,7 +12,7 @@
 
 % BSSMAP message
 parse_message(<<?SCCP_DISCRIM_BSSMAP:8, Length:8, Message:Length/binary>>) ->
-    {ok, bssmap, bssmap_codec:parse_bssmap(Message)};
+    {ok, bssmap, bssmap_codec:parse_bssmap_msg(Message)};
 
 % DTAP message
 parse_message(<<?SCCP_DISCRIM_DTAP:8, DLCI:8, Length:8, Message:Length/binary>>) ->
