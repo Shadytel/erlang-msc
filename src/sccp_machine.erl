@@ -252,7 +252,7 @@ sccp_socket_loop(incoming, LocalRef, undefined, Downlink, Uplink) ->
     receive
 	{sccp_connect_request, LocalRef, RemoteRef, Msg} ->
 	    io:format("Sccp ref=~p/~p: accepting~n", [LocalRef, RemoteRef]),
-	    self() ! {sccp_message, LocalRef, RemoteRef, Msg},
+	    mobile_mm_fsm:assign(Uplink, self(), Msg),
 	    sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, Uplink);
 	{_, LocalRef, RemoteRef} ->
 	    io:format("Sccp ref=~p/~p: NOPE~n", [LocalRef, RemoteRef]),
@@ -285,8 +285,7 @@ sccp_socket_loop(outgoing, LocalRef, RemoteRef, Downlink, Uplink) ->
 sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink) ->
     receive
 	{sccp_message, LocalRef, _, Msg} ->
-	    io:format("Sccp ref=~p/~p: Got a message~n", [LocalRef, RemoteRef]),
-	    mobile_fsm:incoming(Uplink, {sccp_message_in, Msg}),
+	    mobile_mm_fsm:incoming(Uplink, {sccp_message_in, Msg}),
 	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_message, _, LocalRef, Msg} ->
 	    io:format("Sccp ref=~p/~p: Sending a message~n", [LocalRef, RemoteRef]),
@@ -305,7 +304,7 @@ sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink) ->
 	{close, Cause} ->
 % by GSM 08.06 sec 6.2, this can only be initiated by the MSC/network side.
 	    io:format("Sccp ref=~p/~p: Killing myself~n", [LocalRef, RemoteRef]),
-	    mobile_fsm:incoming(Uplink, {sccp_released, LocalRef, RemoteRef, Cause}),
+	    mobile_mm_fsm:terminate(Uplink, Cause),
 	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{kill} ->
 	    io:format("Sccp ref=~p/~p: Killing myself~n", [LocalRef, RemoteRef]),
