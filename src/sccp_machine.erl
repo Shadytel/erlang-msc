@@ -55,10 +55,6 @@ sccp_loop(Socket) ->
 	% change socket message
 	{socket, NewSocket} ->
 	    sccp_machine:sccp_loop(NewSocket);
-	{reg_connect_callback, Fun} ->
-	    io:format("Registering connect handler ~p for SCCP~n", [Fun]),
-	    put(connect_callback, Fun),
-	    sccp_machine:sccp_loop(Socket);
 	{reg_dgram_callback, Fun} ->
 	    io:format("Registering datagram handler ~p for SCCP~n", [Fun]),
 	    put(dgram_callback, Fun),
