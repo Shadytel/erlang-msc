@@ -27,7 +27,6 @@ link_state_handler() ->
 	{ipa_tcp_accept, Socket} ->
 	    io:format("Got accept ~w~n", [Socket]),
 	    sccp_machine:boot_link(Socket),
-	    sccp_machine:reg_connect_callback(fun mobile_fsm:start_link/2),
 	    ok;
 	{link_down, _Socket} ->
 	    ok
