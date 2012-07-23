@@ -42,6 +42,7 @@ connect(Fun) ->
 rx_message(_Socket, _Port, Data, []) ->
     Looper = whereis(sccp_loop),
     {ok, Msg} = sccp_codec:parse_sccp_msg(Data),
+    io:format("Got SCCP message~n ->~p~n ->~p~n", [Data, Msg]),
     Looper ! Msg.
 
 sccp_loop() ->
@@ -79,7 +80,9 @@ sccp_loop(Socket) ->
 	    LocalRef = proplists:get_value(dst_local_ref, Params),
 	    RemoteRef = proplists:get_value(src_local_ref, Params),
 	    Controller = get({sccp_local_ref, LocalRef}),
-	    try sccp_receive_dispatch(Type, Class, Params, Controller)
+%	    io:format("Dispatching T=~p C=~p LR=~p P=~p~n", [Type, Class, LocalRef, Params]),
+	    sccp_receive_dispatch(Type, Class, Params, Controller),
+	    try Bar=foo
 	    catch
 		X:Y ->
 		    io:format("XXXX====XXXX Catching ~p (~p:~p)~n", [Type, X, Y]),
@@ -102,8 +105,19 @@ sccp_loop(Socket) ->
 		    end
 	    end,
 	    sccp_machine:sccp_loop(Socket);
+	{sccp_data_out, LocalRef, RemoteRef, Data} ->
+	    % send out a message
+	    Msg = #sccp_msg{msg_type=?SCCP_MSGT_DT1,
+			    parameters=[{dst_local_ref, RemoteRef},
+					{src_local_ref, LocalRef},
+					{protocol_class, {2,0}},
+					{segm_reass, 0},
+					{user_data, Data}]},
+	    self() ! {sccp_message_out, LocalRef, RemoteRef, Msg},
+	    sccp_machine:sccp_loop(Socket);
 	{sccp_message_out, LocalRef, RemoteRef, Msg} ->
 	    % send out a message
+	    io:format("About to encode & send ~p~n", [Msg]),
 	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg)),
 	    sccp_machine:sccp_loop(Socket);
 	{sccp_connect_confirm, LocalRef, RemoteRef} ->
@@ -151,10 +165,10 @@ sccp_loop(Socket) ->
 sccp_receive_dispatch(?SCCP_MSGT_CR, {2,0}, Params, _) ->
     RemoteRef = proplists:get_value(src_local_ref, Params),
     LocalRef = get_cur_local_ref(),
-    {ok, Pid} = mobile_mm_fsm:start_link(LocalRef, self()),
+    {ok, Pid} = mobile_mm_fsm:start_link(LocalRef, RemoteRef, self()),
     Self = self(),
     Controller = spawn(fun () -> sccp_socket_loop(incoming, LocalRef, undefined, Self, Pid) end),
-    io:format("Link started using ~p as uplink~n", [Controller]),
+%    io:format("Link started using ~p as uplink~n", [Controller]),
     put({sccp_local_ref, LocalRef}, Controller),
     UserData = proplists:get_value(user_data, Params),
     Controller ! {sccp_connect_request, LocalRef, RemoteRef, UserData};
@@ -163,7 +177,7 @@ sccp_receive_dispatch(?SCCP_MSGT_CR, {2,0}, Params, _) ->
 sccp_receive_dispatch(?SCCP_MSGT_CC, {2,0}, Params, Controller) ->
     RemoteRef = proplists:get_value(src_local_ref, Params),
     LocalRef = proplists:get_value(dst_local_ref, Params),
-    io:format("Connect confirm ~p~n", [RemoteRef]),
+%    io:format("Connect confirm ~p~n", [RemoteRef]),
     Controller ! {sccp_connect_confirm, LocalRef, RemoteRef, proplists:get_value(user_data, Params)};
 
     % First phase of disconnect
@@ -172,7 +186,7 @@ sccp_receive_dispatch(?SCCP_MSGT_RLSD, _, Params, Controller) ->
     LocalRef = proplists:get_value(dst_local_ref, Params),
     Msg = proplists:get_value(user_data, Params),
     Cause = proplists:get_value(release_cause, Params),
-    io:format("Sccp releasing ref=~p/~p~n", [LocalRef, RemoteRef]),
+%    io:format("Sccp releasing ref=~p/~p~n", [LocalRef, RemoteRef]),
     Controller ! {sccp_message, LocalRef, RemoteRef, Msg},
     Controller ! {sccp_released, LocalRef, RemoteRef, Cause};
 
@@ -186,7 +200,7 @@ sccp_receive_dispatch(?SCCP_MSGT_RLC, _, Params, Controller) ->
 sccp_receive_dispatch(?SCCP_MSGT_DT1, _, Params, Controller) ->
     LocalRef = proplists:get_value(dst_local_ref, Params),
     MsgBin = proplists:get_value(user_data, Params),
-    io:format("Sccp ref=~p/~p DT1=~p~n", [LocalRef, undefined, MsgBin]),
+%    io:format("Sccp ref=~p/~p DT1=~p~n", [LocalRef, undefined, MsgBin]),
     Controller ! {sccp_message, LocalRef, undefined, MsgBin};
 
     % Connectionless datagram from BSS direction
@@ -242,6 +256,9 @@ get_cur_local_ref() ->
 	    Ref
     end.
 
+get_cur_remote_ref(Local) ->
+    get({remote_ref, Local}).
+
 % Loop process to handle an SCCP connection.
 %
 % Downlink is the pid of the process that we use to send messages
@@ -283,7 +300,7 @@ sccp_socket_loop(outgoing, LocalRef, RemoteRef, Downlink, Uplink) ->
 sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink) ->
     receive
 	{sccp_message, LocalRef, _, Msg} ->
-	    mobile_mm_fsm:incoming(Uplink, {sccp_message_in, Msg}),
+	    mobile_mm_fsm:incoming(Uplink, Msg),
 	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_message, _, LocalRef, Msg} ->
 	    io:format("Sccp ref=~p/~p: Sending a message~n", [LocalRef, RemoteRef]),

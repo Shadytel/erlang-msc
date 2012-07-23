@@ -2,7 +2,7 @@
 -author('Duncan Smith <Duncan@xrtc.net>').
 -include_lib("emsc/include/bssmap.hrl").
 
--export([parse_bssmap/1]).
+-export([parse_bssmap/1, encode_bssmap/1]).
 
 
 
@@ -13,11 +13,20 @@
 %    {ok, CICLen, CIC} = parse_el_cic(binary:part(DataBin, ChanLen+L3Len+PrioLen, 3)),
 %    {ok, 
 
-parse_bssmap(<<?BSSMAP_COMPL_L3_INF:8, DataBin/binary>>) ->
-    Elements = parse_el_list(DataBin),
-    Elements;
 parse_bssmap(<<Type:8, Bin/binary>>) ->
     {Type, parse_el_list(Bin)}.
+
+encode_bssmap({Type, Args}) ->
+    ok.
+
+encode_el_list(Order, Attrs) ->
+    encode_el_list(Order, Attrs, <<>>).
+
+encode_el_list([This|Order], Attrs, SoFar) ->
+    encode_el(This, proplists:get_value(This, Attrs)).
+
+encode_el(Type, Value) ->
+    <<>>.
 
 parse_el_list(DataBin) ->
     lists:reverse(parse_el_list(DataBin, [])).
@@ -71,7 +80,8 @@ parse_el(?ELEM_MS_COUNT, Bin) ->
     {ok, 2, #ms_count{ number=Count }};
 parse_el(?ELEM_L3_HEAD, Bin) ->
     <<Len:8, ProtoId:8, TransId:8, _/bytes>> = Bin,
-    {ok, 4, #l3{ protocol=ProtoId, transaction=TransId }};
+    io:format("L3 Head at ~p of len ~p~n", [Bin, Len]),
+    {ok, 4, #l3{ protocol=ProtoId, transaction=TransId, body=binary:part(Bin, 2, Len - 1) }};
 parse_el(?ELEM_CRYPTO_INFO, Bin) ->
     <<Len:8, A50:1, A51:1, A52:1, A53:1, A54:1, A55:1, A56:1, A57:1, _/bytes>> = Bin,
     if
@@ -110,7 +120,8 @@ parse_el(?ELEM_INTERFER_BAND, Bin) ->
 parse_el(?ELEM_L3_BODY, Bin) ->
     % "Layer 3 Information", 08.08 sec 3.2.2.24
     <<Len:8, _/binary>> = Bin,
-    {ok, Len+2, #l3{ body=binary:part(Bin, 2, Len) }};
+    io:format("L3 Info at ~p of len ~p~n", [Bin, Len]),
+    {ok, Len+2, #l3{ body=binary:part(Bin, 2, Len - 1) }};
 parse_el(?ELEM_DLCI, Bin) ->
     <<Dlci:8, _/binary>> = Bin,
     {ok, 2, #dlci{ dlci=Dlci }};
