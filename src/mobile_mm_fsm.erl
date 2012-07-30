@@ -86,6 +86,9 @@ assign(FsmRef, Downlink, Message) ->
 incoming(FsmRef, Message) ->
     gen_fsm:send_event(FsmRef, bssap:parse_message(Message)).
 
+incoming_0408(FsmRef, Message) ->
+    gen_fsm:send_event(FsmRef, codec_0408:parse_message(Message)).
+
 terminate(FsmRef, Cause) ->
     gen_fsm:send_sync_event(FsmRef, {kill, Cause}).
 
@@ -104,26 +107,30 @@ rr_est_cnf(_) ->
 %% States
 
 % IDLE
-st_idle({bssmap, {?BSSMAP_CLASSMARK_UPD, Args}}, Data) ->
+st_idle({bssmap, ?BSSMAP_CLASSMARK_UPD, Args}, Data) ->
     io:format("Mobile in idle got classmark~n"),
     Cm2 = proplists:get_value(classmark2, Args),
     Cm3 = proplists:get_value(classmark3, Args),
     Dlci = proplists:get_value(dlci, Data),
-    Dlci = 0,
     proplists:get_value(downlink, Data) !
 	{sccp_data_out,
 	 proplists:get_value(localref, Data),
 	 proplists:get_value(remoteref, Data),
-	 bssap:encode_message({bssmap, {?BSSMAP_CLASSMARK_UPD, 0, [{mobile_id, imsi}]}})
+	 bssap:encode_message({bssmap, ?BSSMAP_CLASSMARK_UPD, [{mobile_id, imsi}]})
 	 % FIXME transaction probably ought not be 0
 	},
     {next_state, st_idle, [{classmark2, Cm2}, {classmark3, Cm3} | Data]};
-st_idle({bssmap, {Type, Args}}, Data) ->
-    io:format("Mobile in idle got unk BSSMAP ~p message ~p~n", [Type, Args]),
+st_idle({bssmap, ?BSSMAP_COMPL_L3_INF, Params}, Data) ->
+    {unparsed, MsgBin} = proplists:get_value(l3_message, Params),
+    incoming_0408(self(), MsgBin),
     {next_state, st_idle, Data};
-st_idle({dtap, {Type, Args}}, Data) ->
-    io:format("Mobile in idle got unk DTAP ~p message ~p~n", [Type, Args]),
+st_idle({bssmap, Type, Params}, Data) ->
+    io:format("Mobile in idle got unk BSSMAP ~p message ~p~n", [Type, Params]),
+    {next_state, st_idle, Data};
+st_idle({Tag, Type, Params}, Data) ->
+    io:format("Mobile in idle got unk ~p:~p message ~p~n", [Tag, Type, Params]),
     {next_state, st_idle, Data}.
+
 
 % WAIT FOR RR CONNECTION
 st_wait_for_rr(Event, Data) ->
@@ -135,17 +142,17 @@ st_mm_conn_act(Event, Data) ->
 
 % IDENTIFICATION INITIATED
 st_ident_inited(timeout, Data) ->
-    ok;
-st_ident_inited({dtap, {?GSM48_MT_MM_ID_RESP, Args}}, Data) ->
+    {next_state, st_mm_ident_inited, Data};
+st_ident_inited({dtap_mm, ident_resp, Args}, Data) ->
     io:format("Mobile got id response ~p~n", [Args]),
-    ok;
-st_ident_inited({dtap, {Type, Args}}, Data) ->
-    io:format("Mobile got unknown ~p response ~p~n", [Type, Args]),
+    {next_state, st_mm_ident_inited, Data};
+st_ident_inited({T, Type, Args}, Data) ->
+    io:format("Mobile got unknown ~p:~p response ~p~n", [T, Type, Args]),
     {next_state, st_mm_ident_inited, Data}.
 
 % AUTHENTICATION INITIATED
 st_auth_inited(timeout, Data) ->
-    ok;
+    {next_state, st_mm_ident_inited, Data};
 st_auth_inited(Event, Data) ->
     {next_state, st_auth_inited, Data}.
 

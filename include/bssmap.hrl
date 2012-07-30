@@ -85,7 +85,7 @@
 -define(ELEM_CAUSE,		2#00000100).
 -define(ELEM_CELL_ID,		2#00000101).
 -define(ELEM_PRIORITY,		2#00000110).
--define(ELEM_L3_HEADER,		2#00000111).	%% which is info?
+-define(ELEM_L3_HEAD,		2#00000111).	%% which is info?
 -define(ELEM_IMSI,		2#00001000).
 -define(ELEM_TMSI,		2#00001001).
 -define(ELEM_CRYPTO_INFO,	2#00001010).
@@ -97,7 +97,7 @@
 -define(ELEM_CLASSMARK_IND_3,	2#00010011).
 -define(ELEM_INTERFER_BAND,	2#00010100).
 -define(ELEM_RR_CAUSE,		2#00010101).
--define(ELEM_L3_HEAD,		2#00010111).	%% which is info?
+-define(ELEM_L3_MESSAGE,	2#00010111).
 -define(ELEM_DLCI,		2#00011000).
 -define(ELEM_DOWNLINK_DTX,	2#00011001).
 -define(ELEM_CELL_ID_LIST,	2#00011010).

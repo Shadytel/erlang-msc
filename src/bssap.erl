@@ -11,12 +11,12 @@
 -export([parse_message/1, encode_message/1]).
 
 % BSSMAP message
-parse_message(<<?SCCP_DISCRIM_BSSMAP:8, Length:8, Message:Length/binary>>) ->
-    {bssmap, bssmap_codec:parse_bssmap(Message)};
+parse_message(<<?SCCP_DISCRIM_BSSMAP:8, Length:8, Message:Length/binary, _/binary>>) ->
+    bssmap_codec:parse_message(Message);
 
 % DTAP message
-parse_message(<<?SCCP_DISCRIM_DTAP:8, DLCI:8, Length:8, Message:Length/binary>>) ->
-    {dtap, codec_0408:parse_message(DLCI, Message)};
+parse_message(<<?SCCP_DISCRIM_DTAP:8, DLCI:8, Length:8, Message:Length/binary, _/binary>>) ->
+    codec_0408:parse_message(DLCI, Message);
 
 % Something else entirely
 parse_message(<<Discrim:8, Bin/binary>>) ->
@@ -24,7 +24,7 @@ parse_message(<<Discrim:8, Bin/binary>>) ->
 
 
 encode_message({bssmap, Msg}) ->
-    MsgBin = bssmap_codec:encode_bssmap(Msg),
+    MsgBin = bssmap_codec:encode_message(Msg),
     Len = byte_size(MsgBin),
     <<?SCCP_DISCRIM_BSSMAP:8, Len:8, MsgBin/binary>>;
 

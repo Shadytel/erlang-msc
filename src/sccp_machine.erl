@@ -81,8 +81,7 @@ sccp_loop(Socket) ->
 	    RemoteRef = proplists:get_value(src_local_ref, Params),
 	    Controller = get({sccp_local_ref, LocalRef}),
 %	    io:format("Dispatching T=~p C=~p LR=~p P=~p~n", [Type, Class, LocalRef, Params]),
-	    sccp_receive_dispatch(Type, Class, Params, Controller),
-	    try Bar=foo
+	    try sccp_receive_dispatch(Type, Class, Params, Controller)
 	    catch
 		X:Y ->
 		    io:format("XXXX====XXXX Catching ~p (~p:~p)~n", [Type, X, Y]),
@@ -268,6 +267,7 @@ sccp_socket_loop(incoming, LocalRef, undefined, Downlink, Uplink) ->
 	{sccp_connect_request, LocalRef, RemoteRef, Msg} ->
 	    io:format("Sccp ref=~p/~p: accepting~n", [LocalRef, RemoteRef]),
 	    mobile_mm_fsm:assign(Uplink, self(), Msg),
+	    mobile_mm_fsm:incoming(Uplink, Msg),
 	    sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, Uplink);
 	{_, LocalRef, RemoteRef} ->
 	    io:format("Sccp ref=~p/~p: NOPE~n", [LocalRef, RemoteRef]),

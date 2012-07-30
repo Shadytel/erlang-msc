@@ -2,9 +2,11 @@
 -author('Duncan Smith <Duncan@xrtc.net>').
 -include_lib("emsc/include/bssmap.hrl").
 
--export([parse_bssmap/1, encode_bssmap/1]).
+-export([parse_message/1, encode_message/1]).
 
+-compile(export_all).
 
+% TODO turn this all into using of proplists instead of structures
 
 %parse_bssmap(?BSSMAP_ASSIGN_REQ, DataBin) ->
 %    {ok, ChanLen, ChanType} = parse_el_channeltype(DataBin),
@@ -13,249 +15,458 @@
 %    {ok, CICLen, CIC} = parse_el_cic(binary:part(DataBin, ChanLen+L3Len+PrioLen, 3)),
 %    {ok, 
 
-parse_bssmap(<<Type:8, Bin/binary>>) ->
-    {Type, parse_el_list(Bin)}.
+parse_message(<<Type:8, Bin/binary>>) ->
+    {bssmap, Type, parse_ies(Bin)}.
 
-encode_bssmap({Type, Args}) ->
+encode_message({_Type, _Args}) ->
     ok.
 
-encode_el_list(Order, Attrs) ->
-    encode_el_list(Order, Attrs, <<>>).
-
-encode_el_list([This|Order], Attrs, SoFar) ->
-    encode_el(This, proplists:get_value(This, Attrs)).
-
-encode_el(Type, Value) ->
+encode_ie(_Type, _Value) ->
     <<>>.
 
-parse_el_list(DataBin) ->
-    lists:reverse(parse_el_list(DataBin, [])).
-parse_el_list(<<>>, List) ->
-    List;
-parse_el_list(DataBin, List) ->
-    {ok, Length, Element} = parse_el(DataBin),
-    parse_el_list(binary:part(DataBin, Length, byte_size(DataBin)-Length), [Element|List]).
+parse_ies(Bin) ->
+    parse_ies([], Bin, []).
 
-parse_el(DataBin) ->
-    <<Element:8, Rest/binary>> = DataBin,
-    parse_el(Element, Rest).
+%% [{?BSSMAP_ASSIGN_REQ, assign_req},
+%%  {?BSSMAP_ASSIGN_COMPL, assign_compl},
+%%  {?BSSMAP_ASSIGN_FAIL, assign_fail},
+%%  {?bssmap_hand_reque, handover_request},
+%%  {?bssmap_hand_requi, handover_required},
+%%  {?bssmap_hand_cmd, handover_command},
+%%  {?bssmap_hand_compl, handover_complete},
+%%  {?bssmap_hand_succeed, handover_succeed},
+%%  {?bssmap_hand_fail, handover_fail},
+%%  {?bssmap_hand_perf, handover_performed},
+%%  {?bssmap_hand_cand_enq, handover_candidate_enq},
+%%  {?bssmap_hand_cand_rsp, handover_candidate_resp},
+%%  {?bssmap_hand_req_rej, handover_req_reject},
+%%  {?bssmap_hand_detect, handover_detect},
+%%  {?bssmap_clr_cmd, clear_command},
+%%  {?bssmap_clr_compl, clear_compl},
+%%  {?bssmap_clr_req, clear_request},
+%%  {?bssmap_sapi_rej, sapi_reject},
+%%  {?bssmap_confusion, confusion},
+%%  {?bssmap_suspend, suspend},
+%%  {?bssmap_resume, resume},
+%%  {?bssmap_reset, reset},
+%%  {?bssmap_reset_ack, reset_ack},
+%%  {?bssmap_overload, overload},
+%%  {?bssmap_reset_ckt, reset_ckt},
+%%  {?bssmap_reset_ckt_ack, reset_ckt_ack},
+%%  {?bssmap_msc_inv_trace, msc_inv_trace},
+%%  {?bssmap_bss_inv_trace, bss_inv_trace},
+%%  {?BSSMAP_BLOCK, block},
+%%  {?BSSMAP_BLOCK_ACK, block_ack},
+%%  {?BSSMAP_unblock, unblock},
+%%  {?bssmap_unblock_ack, unblock_ack},
+%%  {?bssmap_cgrp_block, cgrp_block
 
-parse_el(?ELEM_CELL_ID, DataBin) ->
-    <<Len:8, _:4, Type:4, _Rest/binary>> = DataBin,
-    Length = Len+2,
+
+
+
+
+
+parse_ies(_, <<>>, SoFar) ->
+    SoFar;
+
+% 3.2.2.17
+parse_ies([], <<?ELEM_CELL_ID:8, Rest/binary>>, SoFar) ->
+    parse_ies([cell_id], Rest, SoFar);
+parse_ies([cell_id | T], << Len:8, Message:Len/bytes, Rest/binary >>, SoFar) ->
+    <<_:4, Type:4, _/binary>> = Message,
     case Type of
 	2#0000 ->
-	    <<MCC2:4, MCC1:4, MNC3:4, MCC3:4, MNC2:4, MNC1:4, LAC:16/big, CI:16/big, _/binary>> = _Rest,
+	    <<_:8, MCC2:4, MCC1:4, MNC3:4, MCC3:4, MNC2:4, MNC1:4, LAC:16/big, CI:16/big>> = Message,
 	    MCC = MCC3 + MCC2*10 + MCC1*100,
 	    MNC = MNC2 + MNC1*10,
-	    {ok, Length, #cell_id{mcc=MCC, mnc=MNC, cid=CI, lac=LAC}};
+	    parse_ies(T, Rest, [{cell_id, [MCC, MNC, LAC, CI]} | SoFar]);
 	2#0001 ->
-	    <<LAC:16/big, CI:16/big, _/binary>> = _Rest,
-	    {ok, Length, #cell_id{cid=CI, lac=LAC}};
+	    <<_:8, LAC:16/big, CI:16/big>> = Message,
+	    parse_ies(T, Rest, [{cell_id, [LAC, CI]} | SoFar]);
 	2#0010 ->
-	    <<CI:16/big, _/binary>> = _Rest,
-	    {ok, Length, #cell_id{cid=CI}};
+	    <<_:8, CI:16/big>> = Message,
+	    parse_ies(T, Rest, [{cell_id, [CI]} | SoFar]);
 	2#0011 ->
-	    {ok, Length, #cell_id{}}
+	    parse_ies(T, Rest, [{cell_id, []} | SoFar])
     end;
-parse_el(?ELEM_CKT_ID, Bin) ->
-    <<Multiplex:11, Slot:5, _/bytes>> = Bin,
-    {ok, 3, #circuit_id{ pcm=Multiplex, timeslot=Slot }};
-parse_el(?ELEM_CONN_REL_REQTED, Bin) ->
-    {ok, 1, release_requested};
-parse_el(?ELEM_RSRC_AVAIL, Bin) ->
+
+% 3.2.2.2
+parse_ies([], <<?ELEM_CKT_ID:8, Rest/binary>>, SoFar) ->
+    parse_ies([ckt_id], Rest, SoFar);
+parse_ies([ckt_id | T], <<Multiplex:11, Slot:5, Rest/bytes>>, SoFar) ->
+    parse_ies(T, Rest, [{circuit_id, [{pcm, Multiplex}, {timeslot, Slot}]} | SoFar]);
+
+% 3.2.2.3
+parse_ies([], <<?ELEM_CONN_REL_REQTED:8, Rest/binary>>, SoFar) ->
+    parse_ies([release_requested], Rest, SoFar);
+parse_ies([release_requested|T], Rest, SoFar) ->
+    parse_ies(T, Rest, [{release_requested, true} | SoFar]);
+
+% 3.2.2.4
+parse_ies([], <<?ELEM_RSRC_AVAIL:8, Rest/binary>>, SoFar) ->
+    parse_ies([resource_available], Rest, SoFar);
+parse_ies([resource_available|T], <<Message:20/bytes, Rest/bytes>>, SoFar) ->
     % XXX unimplemented
-    {ok, 21, unimpl};
-parse_el(?ELEM_CAUSE, Bin) ->
-    <<Len:8, Ext:1, Class:3, Value:4, _/bytes>> = Bin,
-    {ok, Len+2, #cause{ class=Class, value=Value }};
-parse_el(?ELEM_IMSI, Bin) ->
-    <<Len:8, _/bytes>> = Bin,
-    {ok, Len+2, #imsi{ number=binary:part(Bin, 2, Len) }};
-parse_el(?ELEM_TMSI, Bin) ->
-    <<8:8, TMSI:48/bytes, _/bytes>> = Bin,
-    {ok, 8+2, #tmsi{ number=TMSI }};
-parse_el(?ELEM_MS_COUNT, Bin) ->
-    <<Count:8, _/bytes>> = Bin,
-    {ok, 2, #ms_count{ number=Count }};
-parse_el(?ELEM_L3_HEAD, Bin) ->
-    <<Len:8, ProtoId:8, TransId:8, _/bytes>> = Bin,
-    io:format("L3 Head at ~p of len ~p~n", [Bin, Len]),
-    {ok, 4, #l3{ protocol=ProtoId, transaction=TransId, body=binary:part(Bin, 2, Len - 1) }};
-parse_el(?ELEM_CRYPTO_INFO, Bin) ->
-    <<Len:8, A50:1, A51:1, A52:1, A53:1, A54:1, A55:1, A56:1, A57:1, _/bytes>> = Bin,
+    parse_ies(T, Rest, [{resource_available, {unparsed, Message}} | SoFar]);
+
+% 3.2.2.5
+parse_ies([], <<?ELEM_CAUSE:8, Rest/binary>>, SoFar) ->
+    parse_ies([cause], Rest, SoFar);
+parse_ies([cause|T], <<Len:8, Message:Len, Rest/bytes>>, SoFar) ->
+    <<Ext:1, Class:3, Value:4>> = Message,
+    parse_ies(T, Rest, [{cause, {Class, Value}} | SoFar]);
+
+% 3.2.2.6
+parse_ies([], <<?ELEM_IMSI:8, Rest/binary>>, SoFar) ->
+    parse_ies([imsi], Rest, SoFar);
+parse_ies([imsi|T], <<Len:8, Number:Len/bytes, Rest/bytes>>, SoFar) ->
+    parse_ies(T, Rest, [{imsi, Number} | SoFar]);
+
+% 3.2.2.7
+parse_ies([], <<?ELEM_TMSI:8, Rest/binary>>, SoFar) ->
+    parse_ies([tmsi], Rest, SoFar);
+parse_ies([tmsi|T], <<8:8, TMSI:48/bytes, Rest/bytes>>, SoFar) ->
+    parse_ies(T, Rest, [{tmsi, TMSI} | SoFar]);
+
+% 3.2.2.8
+parse_ies([], <<?ELEM_MS_COUNT:8, Rest/binary>>, SoFar) ->
+    parse_ies([ms_count], Rest, SoFar);
+parse_ies([ms_count|T], <<Count:8, Rest/bytes>>, SoFar) ->
+    parse_ies(T, Rest, [{ms_count, Count} | SoFar]);
+
+% 3.2.2.9
+parse_ies([], <<?ELEM_L3_HEAD:8, Rest/binary>>, SoFar) ->
+    parse_ies(l3_head, Rest, SoFar);
+parse_ies([l3_head|T], <<Len:8, ProtoId:8, TransId:8, Rest/bytes>>, SoFar) ->
+    parse_ies(l3_head, Rest, [{l3_header, [{protocol, ProtoId},
+					   {transaction, TransId}]} | SoFar]);
+
+%    {ok, 4, #l3{ protocol=ProtoId, transaction=TransId, body=codec_0408:parse_msg(binary:part(Bin, 1, Len)) }};
+
+% 3.2.2.10
+parse_ies([], <<?ELEM_CRYPTO_INFO:8, Rest/binary>>, SoFar) ->
+    parse_ies([crypto_info], Rest, SoFar);
+parse_ies([crypto_info|T], <<Len:8, A50:1, A51:1, A52:1, A53:1, A54:1, A55:1, A56:1, A57:1, Tail/bytes>>, SoFar) ->
     if
 	(A51+A52+A53+A54+A55+A56+A57 > 0) ->
-	    <<_:16, Key:64, _/bytes>> = Bin
-       end,
-    {ok, Len+2, #crypto_info{ key=Key, a50=A50, a51=A51, a52=A52, a53=A53, a54=A54, a55=A55, a56=A56, a57=A57 }};
-parse_el(?ELEM_CHAN_TYPE, Bin) ->
+	    <<_:16, Key:64, Rest/bytes>> = Tail;
+	true ->
+	    Rest = Tail
+    end,
+    parse_ies(T, Rest, [{crypto_info, [A50, A51, A52, A53, A54, A55, A56, A57]} | SoFar]);
+
+% 3.2.2.11
+parse_ies([], <<?ELEM_CHAN_TYPE:8, Rest/binary>>, SoFar) ->
+    parse_ies([chan_type], Rest, SoFar);
+parse_ies([chan_type|T], <<Len:8, Message:Len/bytes, Rest/binary>>, SoFar) ->
     % XXX unimplemented
-    <<Len:8, _:4, Speech:4, Rate:8, Ext:1, Version:7, _/binary>> = Bin,
-    {ok, Len+2, #chan_type{ mode=Speech, ratetype=Rate, versions=[Version]}};
-parse_el(?ELEM_PERIODICITY, Bin) ->
-    % XXX not quite compliant, see 3.2.2.12 of ETSI GSM TS 08.08.
-    <<Number, _/binary>> = Bin,
-    {ok, 2, #period{ period=Number }};
-parse_el(?ELEM_EXT_RSRC_IND, Bin) ->
-    <<_:6, Sm:1, Tarr:1, _/binary>> = Bin,
-    {ok, 2, #ext_rsrc{ tarr=Tarr, mode=Sm }};
-parse_el(?ELEM_TOTAL_AVAIL, Bin) ->
-    <<Fr:16/little, Hr:16/little, _/binary>> = Bin,
-    {ok, 5, #rsrcs_available{ halfrate=Hr, fullrate=Fr }};
-parse_el(?ELEM_PRIORITY, Bin) ->
-    <<_:1, Pci:1, Level:4, Queueing:1, Vuln:1, _/binary>> = Bin,
-    {ok, 2, #priority{ can_preempt=Pci, priority=Level, allow_queueing=Queueing, vulnerable=Vuln }};
-parse_el(?ELEM_CLASSMARK_IND_2, Bin) ->
-    % XXX I'm not yet decoding the classmark, see 3.2.2.19 of ETSI GSM TS 08.08.
-    <<Len:8, Classmark:3/bytes, _/binary>> = Bin,
-    {ok, Len+2, #classmark2{ classmark=Classmark }};
-parse_el(?ELEM_CLASSMARK_IND_3, Bin) ->
-    <<Len:8, Classmark:3/bytes, _/binary>> = Bin,
-    {ok, Len+2, #classmark3{ classmark=Classmark }};
-parse_el(?ELEM_INTERFER_BAND, Bin) ->
-    % Not yet decoding
-    <<_:3, Bands:5, _/binary>> = Bin,
-    {ok, 2, #interference{ band_mask=Bands }};
-parse_el(?ELEM_L3_BODY, Bin) ->
-    % "Layer 3 Information", 08.08 sec 3.2.2.24
-    <<Len:8, _/binary>> = Bin,
-    io:format("L3 Info at ~p of len ~p~n", [Bin, Len]),
-    {ok, Len+2, #l3{ body=binary:part(Bin, 2, Len - 1) }};
-parse_el(?ELEM_DLCI, Bin) ->
-    <<Dlci:8, _/binary>> = Bin,
-    {ok, 2, #dlci{ dlci=Dlci }};
-parse_el(?ELEM_DOWNLINK_DTX, Bin) ->
-    % XXX not yet decoded, 3.2.2.26 of 08.08.
-    <<Dtx:8, _/binary>> = Bin,
-    {ok, 2, #dtx{ dtx=Dtx }};
-parse_el(?ELEM_CELL_ID_LIST, Bin) ->
-    <<Len:8, _:4, Discrim:4, _/binary>> = Bin,
-    % XXX not done yet, see 3.2.2.28
-    {ok, Len+2, []};
-parse_el(?ELEM_RSP_REQ, Bin) ->
-    {ok, 1, response_request};
-parse_el(?ELEM_RSRC_IND_METH, Bin) ->
-    <<_:4, Method:4, _/binary>> = Bin,
-    {ok, 2, #rsrc_ind_method{ method=Method }};
-parse_el(?ELEM_CLASSMARK_IND_1, Bin) ->
-    <<Mark:1/bytes, _/binary>> = Bin,
-    {ok, 2, #classmark1{ classmark=Mark }};
-parse_el(?ELEM_CIC_LIST, Bin) ->
-    <<Len:8, Range:8, Rest/binary>> = Bin,
-    {ok, Len+2, #cic_list{ circuits=binary:part(Rest, 0, Len) }};
-parse_el(?ELEM_DIAG, Bin) ->
-    <<Len:8, Pointer:8, _:4, PointerBit: 4, Message/binary>> = Bin,
-    {ok, Len+2, #diag{ index=Pointer, bit=PointerBit, message=binary:part(Message, 0, Len-2) }};
-parse_el(?ELEM_CHOSEN_CHAN, Bin) ->
-    <<Mode:4, Chan:4, _/binary>> = Bin,
+    <<_:4, Speech:4, Rate:8, Ext:1, Version:7>> = Message,
+    parse_ies(T, Rest, [{chan_type, [{mode, Speech}, {ratetype, Rate}, {versions, Version}]} | SoFar]);
+
+% 3.2.2.12
+parse_ies([], <<?ELEM_PERIODICITY:8, Rest/bytes>>, SoFar) ->
+    parse_ies([periodicity], Rest, SoFar);
+parse_ies([periodicity|T], <<Number:8, Rest/binary>>, SoFar) ->
+    % XXX not quite compliant, see spec
+    parse_ies(T, Rest, [{periodicity, Number} | SoFar]);
+
+% 3.2.2.13
+parse_ies([], <<?ELEM_EXT_RSRC_IND:8, Rest/bytes>>, SoFar) ->
+    parse_ies([extended_rsrc], Rest, SoFar);
+parse_ies([extended_rsrc|T], <<_:6, Sm:1, Tarr:1, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{extended_rsrc, {Sm, Tarr}} | SoFar]);
+
+% 3.2.2.14
+parse_ies([], <<?ELEM_TOTAL_AVAIL:8, Rest/bytes>>, SoFar) ->
+    parse_ies([total_avail], Rest, SoFar);
+parse_ies([total_avail|T], <<Fr:16/little, Hr:16/little, Rest/bytes>>, SoFar) ->
+    parse_ies(T, Rest, [{total_avail, [{halfrate, Hr}, {fullrate, Fr}]} | SoFar]);
+
+% 3.2.2.18
+parse_ies([], <<?ELEM_PRIORITY:8, Rest/bytes>>, SoFar) ->
+    parse_ies([priority], Rest, SoFar);
+parse_ies([priority|T], <<1:8, _:1, Pci:1, Level:4, Queueing:1, Vuln:1, Rest/bytes>>, SoFar) ->
+    parse_ies(T, Rest, [{priority, [{can_preempt, Pci}, {priority, Level}, {allow_queueing, Queueing}, {is_vulnerable, Vuln}]} | Rest]);
+
+% 3.2.2.19
+parse_ies([], <<?ELEM_CLASSMARK_IND_2:8, Rest/bytes>>, SoFar) ->
+    parse_ies([classmark_2], Rest, SoFar);
+parse_ies([classmark_2|T], <<Len:8, Classmark:Len/bytes, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{classmark_2, Classmark} | SoFar]);
+
+% 3.2.2.20
+parse_ies([], <<?ELEM_CLASSMARK_IND_3:8, Rest/bytes>>, SoFar) ->
+    parse_ies([classmark_3], Rest, SoFar);
+parse_ies([classmark_3|T], <<Len:8, Classmark:Len/bytes, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{classmark_3, Classmark} | SoFar]);
+
+% 3.2.2.21
+parse_ies([], <<?ELEM_INTERFER_BAND:8, Rest/bytes>>, SoFar) ->
+    parse_ies([interference_band], Rest, SoFar);
+parse_ies([interference_band|T], <<_:3, Band:5, Rest/bytes>>, SoFar) ->
+    parse_ies(T, Rest, [{interference_band, Band} | SoFar]);
+
+% 3.2.2.22
+parse_ies([], <<?ELEM_RR_CAUSE:8, Rest/bytes>>, SoFar) ->
+    parse_ies([rr_cause], Rest, SoFar);
+parse_ies([rr_cause|T], <<Cause:8, Rest/bytes>>, SoFar) ->
+    parse_ies(T, Rest, [{rr_cause, Cause} | SoFar]);
+
+% 3.2.2.24
+parse_ies([], <<?ELEM_L3_MESSAGE:8, Rest/bytes>>, SoFar) ->
+    parse_ies([l3_message], Rest, SoFar);
+parse_ies([l3_message|T], <<Len:8, Message:Len/bytes, Rest/bytes>>, SoFar) ->
+    io:format("L3 Message: ~p~n", [Message]),
+    parse_ies(T, Rest, [{l3_message, {unparsed, Message}} | SoFar]);
+
+% 3.2.2.25
+parse_ies([], <<?ELEM_DLCI:8, Rest/bytes>>, SoFar) ->
+    parse_ies([dlci], Rest, SoFar);
+parse_ies([dlci|T], <<Dlci:8, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{dlci, Dlci} | SoFar]);
+
+% 3.2.2.26
+parse_ies([], <<?ELEM_DOWNLINK_DTX:8, Rest/bytes>>, SoFar) ->
+    parse_ies([downlink_dtx], Rest, SoFar);
+parse_ies([downlink_dtx|T], <<_:7, Ena:1, Rest/bytes>>, SoFar) ->
+    parse_ies(T, Rest, [{downlink_dtx, Ena} | SoFar]);
+
+% 3.2.2.27
+parse_ies([], <<?ELEM_CELL_ID_LIST:8, Rest/bytes>>, SoFar) ->
+    parse_ies([cell_id_list], Rest, SoFar);
+parse_ies([cell_id_list|T], <<Len:8, Body:Len/bytes, Rest/binary>>, SoFar) ->
+    % XXX not done yet, see 3.2.2.27
+    parse_ies(T, Rest, [{cell_id_list, {unparsed, Body}} | SoFar]);
+
+% 3.2.2.28
+parse_ies([], <<?ELEM_RSP_REQ:8, Rest/binary>>, SoFar) ->
+    parse_ies([response_request], Rest, SoFar);
+parse_ies([response_request|T], Rest, SoFar) ->
+    parse_ies(T, Rest, [{response_request, true} | SoFar]);
+
+% 3.2.2.29
+parse_ies([], <<?ELEM_RSRC_IND_METH:8, Rest/binary>>, SoFar) ->
+    parse_ies([rsrc_ind_method], Rest, SoFar);
+parse_ies([rsrc_ind_method|T], <<_:4, Method:4, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{rsrc_ind_method, Method} | SoFar]);
+
+% 3.2.2.30
+parse_ies([], <<?ELEM_CLASSMARK_IND_1:8, Rest/binary>>, SoFar) ->
+    parse_ies([classmark_1], Rest, SoFar);
+parse_ies([classmark_1|T], <<Classmark:1/bytes, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{classmark_1, Classmark} | SoFar]);
+
+% 3.2.2.31
+parse_ies([], <<?ELEM_CIC_LIST:8, Rest/binary>>, SoFar) ->
+    parse_ies([ckt_id_list], Rest, SoFar);
+parse_ies([ckt_id_list|T], <<Len:8, Body:Len/bytes, Rest/binary>>, SoFar) ->
+    <<Range:8, Status/bits>> = Body,
+    parse_ies(T, Rest, [{ckt_id_list, {Range, Status}} | SoFar]);
+
+% 3.2.2.32
+parse_ies([], <<?ELEM_DIAG:8, Rest/binary>>, SoFar) ->
+    parse_ies([diag], Rest, SoFar);
+parse_ies([diag|T], <<Len:8, Body:Len/bytes, Rest/binary>>, SoFar) ->
+    <<Pointer:8, _:4, PointerBit: 4, Message/binary>> = Body,
+    parse_ies(T, Rest, [{diag, [{pointer, Pointer}, {bit, PointerBit}, {message, Message}]} | SoFar]);
+
+% 3.2.2.33
+parse_ies([], <<?ELEM_CHOSEN_CHAN:8, Rest/binary>>, SoFar) ->
+    parse_ies([chosen_chan], Rest, SoFar);
+parse_ies([chosen_chan|T], <<Mode:4, Chan:4, Rest/binary>>, SoFar) ->
     % XXX not fully decoded
-    {ok, 2, #chan_kind{ mode=Mode, count=Chan }};
-parse_el(?ELEM_CIPHER_RSP_MODE, Bin) ->
-    <<_:7, Mode:1, _/binary>> = Bin,
-    if
-	Mode == 1 ->
-	    {ok, 2, #cipher_rsp_mode{ mode=include_imeisv }};
-	Mode == 0 ->
-	    {ok, 2, #cipher_rsp_mode{ mode=exclude_imeisv }}
+    parse_ies(T, Rest, [{chosen_chan, [{mode, Mode}, {count, Chan}]} | SoFar]);
+
+% 3.2.2.34
+parse_ies([], <<?ELEM_CIPHER_RSP_MODE:8, Rest/binary>>, SoFar) ->
+    parse_ies([cipher_resp_mode], Rest, SoFar);
+parse_ies([cipher_resp_mode|T], <<_:7, Mode:1, Rest/binary>>, SoFar) ->
+    case Mode of
+	1 -> parse_ies(T, Rest, [{cipher_resp_mode, include_imeisv} | SoFar]);
+	0 -> parse_ies(T, Rest, [{cipher_resp_mode, exclude_imeisv} | SoFar])
     end;
-parse_el(?ELEM_CHAN_NEEDED, Bin) ->
-    <<_:6, Type:2, _/binary>> = Bin,
+
+% 3.2.2.35
+parse_ies([], <<?ELEM_L3_BODY:8, Rest/binary>>, SoFar) ->
+    parse_ies([l3_body], Rest, SoFar);
+parse_ies([l3_body|T], <<Len:8, Message:Len/bytes, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{l3_body, {unparsed, Message}} | SoFar]);
+
+% 3.2.2.36
+parse_ies([], <<?ELEM_CHAN_NEEDED:8, Rest/binary>>, SoFar) ->
+    parse_ies([chan_needed], Rest, SoFar);
+parse_ies([chan_needed|T], <<_:6, Type:2, Rest/binary>>, SoFar) ->
     if
 	Type == 2#00 ->
-	    {ok, 2, #chan_needed{ type=any }};
+	    Needed = any;
 	Type == 2#01 ->
-	    {ok, 2, #chan_needed{ type=sdcch }};
+	    Needed = sdcch;
 	Type == 2#10 ->
-	    {ok, 2, #chan_needed{ type=tchf }};
+	    Needed = tchf;
 	Type == 2#11 ->
-	    % either will do
-	    {ok, 2, #chan_needed{ type=tchfh }}
-    end;
-parse_el(?ELEM_TRACE_TYPE, Bin) ->
-    <<Type:8, _/binary>> = Bin,
+	    % either TCH/H or TCH/F will do
+	    Needed = tchfh
+    end,
+    parse_ies(T, Rest, [{chan_needed, Needed} | SoFar]);
+
+% 3.2.2.37
+parse_ies([], <<?ELEM_TRACE_TYPE:8, Rest/binary>>, SoFar) ->
+    parse_ies([trace_type], Rest, SoFar);
+parse_ies([trace_type|T], <<Type:8, Rest/binary>>, SoFar) ->
     % XXX not fully decoded, see 08.08 sec 3.2.2.37
-    {ok, 2, #trace_type{ type=Type }};
-parse_el(?ELEM_TRIGGER_ID, Bin) ->
-    <<Len:8, Rest/binary>> = Bin,
+    parse_ies(T, Rest, [{trace_type, Type} | SoFar]);
+
+% 3.2.2.38
+parse_ies([], <<?ELEM_TRIGGER_ID:8, Rest/binary>>, SoFar) ->
+    parse_ies([trigger_id], Rest, SoFar);
+parse_ies([trigger_id|T], <<Len:8, Message:Len/bytes, Rest/binary>>, SoFar) ->
     % XXX what sort of identity is this
-    {ok, Len+2, #trigger_id{ id=binary:part(Rest, 0, Len) }};
-parse_el(?ELEM_TRACE_REF, Bin) ->
-    <<TraceRef:16/binary, _/binary>> = Bin,
-    {ok, 2, #trace_ref{ ref=TraceRef }};
-parse_el(?ELEM_TRANS_ID, Bin) ->
-    <<Len:8, TransNr:16, _/binary>> = Bin,
-    {ok, Len+2, #trans_id{ id=TransNr }};
-parse_el(?ELEM_MOBILE_ID, Bin) ->
-    <<Len:8, Rest/binary>> = Bin,
-    {ok, Len+2, #ms_id{ imei=binary:part(Rest, 0, Len) }};
-parse_el(?ELEM_OMC_ID, Bin) ->
-    <<Len:8, Rest/binary>> = Bin,
-    {ok, Len+2, #omc_id{ id=binary:part(Rest, 0, Len) }};
-parse_el(?ELEM_FORWARD_IND, Bin) ->
-    <<_:4, Fwd:4>> = Bin,
+    parse_ies(T, Rest, [{trigger_id, {unparsed, Message}} | SoFar]);
+
+% 3.2.2.39
+parse_ies([], <<?ELEM_TRACE_REF:8, Rest/binary>>, SoFar) ->
+    parse_ies([trace_ref], Rest, SoFar);
+parse_ies([trace_ref|T], <<TraceRef:16, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{trace_ref, TraceRef} | SoFar]);
+
+% 3.2.2.40
+parse_ies([], <<?ELEM_TRANS_ID:8, Rest/binary>>, SoFar) ->
+    parse_ies([trans_id], Rest, SoFar);
+parse_ies([trans_id|T], <<2:8, TransNr:16, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{trans_id, TransNr} | SoFar]);
+
+% 3.2.2.41
+parse_ies([], <<?ELEM_MOBILE_ID:8, Rest/binary>>, SoFar) ->
+    parse_ies([mobile_id], Rest, SoFar);
+parse_ies([mobile_id|T], <<Len:8, Message:Len/bytes, Rest/binary>>, SoFar) ->
+    Ident = common_0408:parse_mobile_id(Message),
+    parse_ies(T, Rest, [{mobile_id, Ident} | SoFar]);
+
+% 3.2.2.42
+parse_ies([], <<?ELEM_OMC_ID:8, Rest/binary>>, SoFar) ->
+    parse_ies([omc_id], Rest, SoFar);
+parse_ies([omc_id|T], <<Len:8, ID:Len/bytes, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{omc_id, ID} | SoFar]);
+
+% 3.2.2.43
+parse_ies([], <<?ELEM_FORWARD_IND:8, Rest/binary>>, SoFar) ->
+    parse_ies([forward_ind], Rest, SoFar);
+parse_ies([forward_ind|T], <<_:4, Fwd:4, Rest/binary>>, SoFar) ->
     if
 	Fwd == 2#0001 ->
-	    {ok, 2, #forward{ ind=forward }};
+	    Ind = forward;
 	Fwd == 2#0010 ->
-	    {ok, 2, #forward{ ind=forward_and_trace }}
-    end;
-parse_el(?ELEM_CHOSEN_CRYPTO, Bin) ->
-    <<A50:1, A51:1, A52:1, A53:1, A54:1, A55:1, A56:1, A57:1, _/bytes>> = Bin,
-    if
-	(A51+A52+A53+A54+A55+A56+A57 > 0) ->
-	    <<_:16, Key:64, _/bytes>> = Bin
-       end,
-    {ok, 2, #crypto_chosen{ key=Key, a50=A50, a51=A51, a52=A52, a53=A53, a54=A54, a55=A55, a56=A56, a57=A57 }};
-parse_el(?ELEM_CKT_POOL, Bin) ->
-    <<Number, _/bytes>> = Bin,
-    {ok, 2, #circuit_pool{ pool=Number }};
-parse_el(?ELEM_CKT_POOL_LIST, Bin) ->
-    <<Len, Rest/binary>> = Bin,
+	    Ind = forward_and_trace
+    end,
+    parse_ies(T, Rest, [{forward_ind, Ind} | SoFar]);
+
+% 3.2.2.44
+parse_ies([], <<?ELEM_CHOSEN_CRYPTO:8, Rest/binary>>, SoFar) ->
+    parse_ies([chosen_crypto], Rest, SoFar);
+parse_ies([chosen_crypto|T], <<AlgId:8, Rest/binary>>, SoFar) ->
+    Algorithm = case AlgId of
+		    2#0001 -> none;
+		    2#0010 -> a51;
+		    2#0011 -> a52;
+		    2#0100 -> a53;
+		    2#0101 -> a54;
+		    2#0110 -> a55;
+		    2#0111 -> a56;
+		    2#1000 -> a57;
+		    _ -> unknown
+		end,
+    parse_ies(T, Rest, [{chosen_crypto, Algorithm} | SoFar]);
+
+% 3.2.2.45
+parse_ies([], <<?ELEM_CKT_POOL:8, Rest/binary>>, SoFar) ->
+    parse_ies([ckt_pool], Rest, SoFar);
+parse_ies([ckt_pool|T], <<Number, Rest/bytes>>, SoFar) ->
+    parse_ies(T, Rest, [{ckt_pool, Number} | SoFar]);
+
+% 3.2.2.46
+parse_ies([], <<?ELEM_CKT_POOL_LIST:8, Rest/binary>>, SoFar) ->
+    parse_ies([ckt_pool_list], Rest, SoFar);
+parse_ies([ckt_pool_list|T], <<Len:8, Message:Len/bytes, Rest/binary>>, SoFar) ->
     % XXX not done, I'm lazy
-    {ok, Len+2, #circuit_pool{ pool=binary:part(Rest, 0, Len) }};
-parse_el(?ELEM_TIME_IND, Bin) ->
-    <<Time, _/binary>> = Bin,
+    parse_ies(T, Rest, [{ckt_pool_list, {unparsed, Message}} | SoFar]);
+
+% 3.2.2.47
+parse_ies([], <<?ELEM_TIME_IND:8, Rest/binary>>, SoFar) ->
+    parse_ies([time_ind], Rest, SoFar);
+parse_ies([time_ind|T], <<Time:8, Rest/binary>>, SoFar) ->
     if
 	Time == 255 ->
-	    {ok, 2, #time_ind{ seconds=inf }};
+	    parse_ies(T, Rest, [{time_ind, inf} | SoFar]);
 	true ->
-	    {ok, 2, #time_ind{ seconds=Time*10 }}
+	    parse_ies(T, Rest, [{time_ind, Time*10} | SoFar])
     end;
-parse_el(?ELEM_RSRC_SITUATION, Bin) ->
+
+% 3.2.2.48
+parse_ies([], <<?ELEM_RSRC_SITUATION:8, Rest/binary>>, SoFar) ->
+    parse_ies([resource_situation], Rest, SoFar);
+parse_ies([resource_situation|T], <<Len:8, Message:Len/bytes, Rest/binary>>, SoFar) ->
     % XXX Complex reporting message, see 08.08 sec 3.2.2.48
-    <<Len, _/binary>> = Bin,
-    {ok, Len+2, resource_situation_message};
-parse_el(?ELEM_QUEUE_IND, Bin) ->
-    <<_:6, Rec:1, _:1, _/binary>> = Bin,
+    parse_ies(T, Rest, [{resource_situation, {unparsed, Message}} | SoFar]);
+
+% 3.2.2.49
+parse_ies([], <<?ELEM_CURRENT_CHAN:8, Rest/binary>>, SoFar) ->
+    parse_ies([current_chan], Rest, SoFar);
+parse_ies([current_chan|T], <<Mode:4, Chan:4, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{current_chan, {Mode, Chan}} | SoFar]);
+
+% 3.2.2.50
+parse_ies([], <<?ELEM_QUEUE_IND:8, Rest/binary>>, SoFar) ->
+    parse_ies([queue_ind], Rest, SoFar);
+parse_ies([queue_ind|T], <<_:6, Rec:1, _:1, Rest/binary>>, SoFar) ->
     if
 	Rec == 0 ->
-	    {ok, 2, #queue_ind{ advice=disallow }};
+	    parse_ies(T, Rest, [{queue_ind, disallow} | SoFar]);
 	Rec == 1 ->
-	    {ok, 2, #queue_ind{ advice=allow }}
+	    parse_ies(T, Rest, [{queue_ind, allow} | SoFar])
     end;
-parse_el(?ELEM_SPEECH_VERSION, Bin) ->
-    <<_:1, Version:7, _/binary>> = Bin,
-    {ok, 2, #speech_type{ type=Version }};
-parse_el(?ELEM_ASSIGN_REQMT, Bin) ->
-    <<Mode:8, _/binary>> = Bin,
+
+% 3.2.2.51
+parse_ies([], <<?ELEM_SPEECH_VERSION:8, Rest/binary>>, SoFar) ->
+    parse_ies([speech_version], Rest, SoFar);
+parse_ies([speech_version|T], <<_:1, Version:7, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{speech_version, Version} | SoFar]);
+
+% 3.2.2.52
+parse_ies([], <<?ELEM_ASSIGN_REQMT:8, Rest/binary>>, SoFar) ->
+    parse_ies([assign_reqmt], Rest, SoFar);
+parse_ies([assign_reqmt|T], <<Mode:8, Rest/binary>>, SoFar) ->
     if
 	Mode == 2#00000001 ->
-	    {ok, 2, #assignment_require{ mode=immediate }};
+	    parse_ies(T, Rest, [{assign_reqmt, immediate} | SoFar]);
 	Mode == 2#00000000 ->
-	    {ok, 2, #assignment_require{ mode=delayed }}
+	    parse_ies(T, Rest, [{assign_reqmt, delayed} | SoFar])
     end;
-parse_el(?ELEM_TALKER_FLAG, Bin) ->
-    {ok, 1, talker_flag};
-parse_el(?ELEM_GRP_CALL_REF, Bin) ->
-    <<Len:8, Group:40/binary, _/binary>> = Bin,
-    {ok, Len+2, #group_ref{ ref=Group }};
-parse_el(?ELEM_EMLPP_PRIO, Bin) ->
-    <<_:5, Pri:3, _/binary>> = Bin,
-    {ok, 2, #priority{ priority=Pri }};
-parse_el(?ELEM_CONF_EVOL_IND, Bin) ->
-    <<_:4, SMI:4, _/binary>> = Bin,
-    {ok, 2, #evol_ind{ smi_count=SMI }};
-parse_el(Type, Bin) ->
-    {ok, 1, {unknown, Type}}.
+
+% 3.2.2.54
+parse_ies([], <<?ELEM_TALKER_FLAG:8, Rest/binary>>, SoFar) ->
+    parse_ies([talker_flag], Rest, SoFar);
+parse_ies([talker_flag|T], Rest, SoFar) ->
+    parse_ies(T, Rest, [{talker_flag, true} | SoFar]);
+
+% 3.2.2.55
+parse_ies([], <<?ELEM_GRP_CALL_REF:8, Rest/binary>>, SoFar) ->
+    parse_ies([group_call_ref], Rest, SoFar);
+parse_ies([group_call_ref|T], <<Len:8, Message:Len/bytes, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{group_call_ref, {unparsed, Message}} | SoFar]);
+
+% 3.2.2.56
+parse_ies([], <<?ELEM_EMLPP_PRIO:8, Rest/binary>>, SoFar) ->
+    parse_ies([emlpp_prio], Rest, SoFar);
+parse_ies([emlpp_prio|T], <<_:5, Pri:3, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{emlpp_prio, Pri} | SoFar]);
+
+% 3.2.2.57
+parse_ies([], <<?ELEM_CONF_EVOL_IND:8, Rest/binary>>, SoFar) ->
+    parse_ies([conf_evol_ind], Rest, SoFar);
+parse_ies([conf_evol_ind|T], <<_:4, SMI:4, Rest/binary>>, SoFar) ->
+    parse_ies(T, Rest, [{conf_evol_ind, SMI} | SoFar]);
+
+% catchall
+parse_ies([], <<Type:8, Len:8, Message:Len/bytes, Rest/binary>>, SoFar) ->
+    parse_ies([], Rest, [{unknown, {Type, Message}} | SoFar]).
 

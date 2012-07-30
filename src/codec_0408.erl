@@ -3,24 +3,24 @@
 
 -include_lib("emsc/include/dtap.hrl").
 
--export([parse_msg/1]).
+-export([parse_message/1]).
 -compile(export_all).
 
-parse_msg(<<Skip:4, Discrim:4, Msg/binary>>) ->
+parse_message(<<Skip:4, Discrim:4, Msg/binary>>) ->
     case Skip of
 	0 ->
-	    parse_msg(Discrim, Msg);
+	    parse_message(Discrim, Msg);
 	_ ->
 	    {}
     end.
 
-parse_msg(2#0011, <<0:1, Seq:1, Type:6, Msg/binary>>) ->
+parse_message(2#0011, <<0:1, Seq:1, Type:6, Msg/binary>>) ->
     parse_cc_msg(Type, Seq, Msg);
-parse_msg(2#0101, <<Type:8, Msg/binary>>) ->
+parse_message(2#0101, <<Type:8, Msg/binary>>) ->
     parse_mm_msg(Type, Msg);
-parse_msg(2#0110, <<Type:8, Msg/binary>>) ->
+parse_message(2#0110, <<Type:8, Msg/binary>>) ->
     parse_rr_msg(Type, Msg);
-parse_msg(Discrim, <<Type:8, Msg/binary>>) ->
+parse_message(Discrim, <<Type:8, Msg/binary>>) ->
     {dtap_unknown, Discrim, Type, Msg}.
 
 % This file only contains routines to parse messages and elements that
@@ -103,22 +103,22 @@ parse_mm_msg(?GSM48_MT_MM_AUTH_RESP, Msg) ->
     {dtap_mm, auth_resp, parse_ies([auth_param_sres], Msg)};
 % 9.2.4
 parse_mm_msg(?GSM48_MT_MM_CM_REEST_REQ, Msg) ->
-    {dtap_mm, reest_req, parse_ies([cipher_key_seq, spare_half, classmark_2, mobile_ident, lai], Msg)};
+    {dtap_mm, reest_req, parse_ies([cipher_key_seq, spare_half, classmark_2, mobile_id, lai], Msg)};
 % 9.2.7
 parse_mm_msg(?GSM48_MT_MM_CM_SERV_ABORT, _Msg) ->
     {dtap_mm, serv_abort, []};
 % 9.2.9
 parse_mm_msg(?GSM48_MT_MM_CM_SERV_REQ, Msg) ->
-    {dtap_mm, serv_req, parse_ies([cm_serv_type, cipher_key_seq, classmark_2, mobile_ident], Msg)};
+    {dtap_mm, serv_req, parse_ies([cm_serv_type, cipher_key_seq, classmark_2, mobile_id], Msg)};
 % 9.2.11
 parse_mm_msg(?GSM48_MT_MM_ID_RESP, Msg) ->
-    {dtap_mm, ident_resp, parse_ies([mobile_ident], Msg)};
+    {dtap_mm, ident_resp, parse_ies([mobile_id], Msg)};
 % 9.2.12
 parse_mm_msg(?GSM48_MT_MM_IMSI_DETACH_IND, Msg) ->
-    {dtap_mm, detach_ind, parse_ies([classmark_1, mobile_ident], Msg)};
+    {dtap_mm, detach_ind, parse_ies([classmark_1, mobile_id], Msg)};
 % 9.2.15
 parse_mm_msg(?GSM48_MT_MM_LOC_UPD_REQUEST, Msg) ->
-    {dtap_mm, loc_update_req, parse_ies([loc_upd_type, cipher_key_seq, lai, classmark_1, mobile_ident], Msg)};
+    {dtap_mm, loc_update_req, parse_ies([loc_upd_type, cipher_key_seq, lai, classmark_1, mobile_id], Msg)};
 % 9.2.16
 parse_mm_msg(?GSM48_MT_MM_STATUS, Msg) ->
     {dtap_mm, mm_status, parse_ies([rej_cause], Msg)};
@@ -153,14 +153,9 @@ parse_ies([lai|T], <<MCC2:4, MCC1:4, MNC3:4, MCC3:4, MNC2:4, MNC1:4, LAC:16/big,
     MNC = MNC2 + MNC1*10,
     parse_ies(T, Rest, [{lai, {MCC, MNC, LAC}} | SoFar]);
 % 10.5.1.4
-parse_ies([mobile_ident|T], <<Length:8, Dig1:4, Odd:1, Type:3, Msg/bits>>, SoFar) ->
-    Count = Length - 1,
-    <<Digits:Count/binary, Rest/bits>> = Msg,
-    case Odd of
-	2#0 -> Text = bcd:decode(Digits, Count);
-	2#1 -> Text = <<(Dig1+16#30), (bcd:decode(Digits, Count))/binary>>
-    end,
-    parse_ies(T, Rest, [{mobile_ident, {Type, Text}} | SoFar]);
+parse_ies([mobile_id|T], <<Length:8, Message:Length/bytes, Rest/bits>>, SoFar) ->
+    Ident = common_0408:parse_mobile_id(Message),
+    parse_ies(T, Rest, [{mobile_id, Ident} | SoFar]);
 % 10.5.1.5
 parse_ies([classmark_1|T], <<_:1, Rev:2, Early:1, A51:1, Power:3, Rest/bits>>, SoFar) ->
     parse_ies(T, Rest, [{classmark_1, [{revision, Rev},
