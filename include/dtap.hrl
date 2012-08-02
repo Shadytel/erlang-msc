@@ -162,15 +162,29 @@
 
 %%%% INFORMATION ELEMENTS
 
+% common elements
+-define(GSM48_IE_LOCATION_AREA,	16#13). % 10.5.1.3
 -define(GSM48_IE_MOBILE_ID,	16#17).	% 10.5.1.4
+
+% MM elements
 -define(GSM48_IE_NAME_LONG,	16#43).	% 10.5.3.5a
 -define(GSM48_IE_NAME_SHORT,	16#45).	% 10.5.3.5a
 -define(GSM48_IE_UTC,		16#46).	% 10.5.3.8
 -define(GSM48_IE_NET_TIME_TZ,	16#47).	% 10.5.3.9
 -define(GSM48_IE_LSA_IDENT,	16#48).	% 10.5.3.11
+-define(GSM48_IE_FOLLOW_ON_PROC,	16#a1).
+% cipher_key_seq
+% classmark_1
+% classmark_2
+% spare_half
+% loc_upd_type
+% cong_lev
+% rej_cause
 
+% CC elements
 -define(GSM48_IE_BEARER_CAP,	16#04).	% 10.5.4.5
 -define(GSM48_IE_CAUSE,		16#08).	% 10.5.4.11
+% call_state
 -define(GSM48_IE_CC_CAP,	16#15).	% 10.5.4.5a
 -define(GSM48_IE_ALERT,		16#19).	% 10.5.4.26
 -define(GSM48_IE_FACILITY,	16#1c).	% 10.5.4.15
@@ -197,6 +211,9 @@
 -define(GSM48_IE_REV_C_SETUP,	16#a3).	% 10.5.4.22a
 -define(GSM48_IE_REPEAT_CIR,	16#d1).	% 10.5.4.22
 -define(GSM48_IE_REPEAT_SEQ,	16#d3).	% 10.5.4.22
+-define(GSM48_IE_PRIORITY_LEV,	16#80).
+-define(GSM48_IE_CTS_PERMISSION,	16#a2).
+
 
 % Section 10.5.4.11 / Table 10.5.122
 -define(GSM48_CAUSE_CS_GSM,	16#60).
@@ -251,9 +268,3 @@
 % System Information 4 (types are equal IEs above)
 -define(GSM48_IE_CBCH_CHAN_DESC,	16#64).
 -define(GSM48_IE_CBCH_MOB_AL,	16#72).
-
-% Additional MM elements
--define(GSM48_IE_LOCATION_AREA,	16#13).
--define(GSM48_IE_PRIORITY_LEV,	16#80).
--define(GSM48_IE_FOLLOW_ON_PROC,	16#a1).
--define(GSM48_IE_CTS_PERMISSION,	16#a2).
