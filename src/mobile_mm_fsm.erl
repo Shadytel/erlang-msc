@@ -10,7 +10,7 @@
 -export([rr_est_ind/2, rr_rel_ind/1, rr_est_cnf/1, start_link/3]).
 
 % external interfaces
--export([incoming/2, assign/3]).
+-export([incoming/2]).
 
 % gen_fsm callbacks
 -export([init/1, handle_event/3, handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
@@ -54,17 +54,25 @@ init([LocalRef, RemoteRef, Sender]) ->
 %%          {next_state, NextName, NewData, Timeout} |
 %%          {next_state, NextName, NewData, hibernate} |
 %%          {stop, Reason, NewData}
-handle_event(Event, StateName, Data) ->
-    io:format("Mobile got ~p while in ~p~n", [Event, StateName]),
-    {next_state, StateName, Data}.
 
-handle_sync_event(Event, _From, StateName, Data) ->
+%handle_event(Event, StateName, Data) ->
+%    io:format("Mobile got ~p while in ~p~n", [Event, StateName]),
+%    {next_state, StateName, Data}.
+
+handle_event(Event, StateName, Data) ->
     case Event of
 	{kill, Cause} ->
 	    {stop, {cause, Cause}, Data};
+	{rr_est_ind, Downlink} ->
+	    {next_state, st_idle, [{downlink, Downlink}]};
+	{rr_rel_ind} ->
+	    {next_state, st_idle, Data};
 	_ ->
-	    {reply, {error, invalid_sync_event}, StateName, Data}
+	    {reply, {error, invalid_all_state_event}, StateName, Data}
     end.
+
+handle_sync_event(_Event, _From, StateName, Data) ->
+    {next_state, StateName, Data}.
 
 handle_info(Info, StateName, Data) ->
     {next_state, StateName, Data}.
@@ -78,10 +86,6 @@ code_change(Old, StateName, Data, Extra) ->
 %% ============================================================
 %% external api
 
-% Now I know where my downlink is
-assign(FsmRef, Downlink, Message) ->
-    ok.
-
 % Accept a message from the mobile station
 incoming(FsmRef, Message) ->
     gen_fsm:send_event(FsmRef, bssap:parse_message(Message)).
@@ -90,24 +94,36 @@ incoming_0408(FsmRef, Message) ->
     gen_fsm:send_event(FsmRef, codec_0408:parse_message(Message)).
 
 terminate(FsmRef, Cause) ->
-    gen_fsm:send_sync_event(FsmRef, {kill, Cause}).
+    gen_fsm:send_all_state_event(FsmRef, {kill, Cause}).
 
 % messages from the RR layer
-rr_est_ind(_, _) ->
-    io:format("rr_est_ind from rr to mm~n").
 
-rr_rel_ind(_) ->
-    io:format("rr_rel_ind from rr to mm~n").
+% Now I know where my downlink is
+rr_est_ind(FsmRef, Downlink) ->
+    io:format("rr_est_ind from rr to mm~n"),
+    gen_fsm:send_event(FsmRef, {rr_est_ind, Downlink}).
+
+rr_rel_ind(FsmRef) ->
+    io:format("rr_rel_ind from rr to mm~n"),
+    gen_fsm:send_all_state_event(FsmRef, {rr_rel_ind}).
 
 
-rr_est_cnf(_) ->
-    io:format("rr_est_cnf from rr to mm~n").
+rr_est_cnf(FsmRef) ->
+    io:format("rr_est_cnf from rr to mm~n"),
+    gen_fsm:send_all_state_event(FsmRef, {rr_est_cnf}).
 
 %% ============================================================
 %% States
 
 % IDLE
-st_idle({bssmap, ?BSSMAP_CLASSMARK_UPD, Args}, Data) ->
+% No RR connection exists, and no MM procedures are running.
+st_idle({rr_est_ind, Downlink}, Data) ->
+    NewData = lists:append([{downlink, Downlink}], proplists:delete(downlink, Data)),
+    {next_state, mm_conn_act, NewData}.
+
+% MM CONNECTION ACTIVE
+% An RR connection exists, but no MM procedures are running.
+st_mm_conn_act({bssmap, ?BSSMAP_CLASSMARK_UPD, Args}, Data) ->
     io:format("Mobile in idle got classmark~n"),
     Cm2 = proplists:get_value(classmark2, Args),
     Cm3 = proplists:get_value(classmark3, Args),
@@ -119,31 +135,28 @@ st_idle({bssmap, ?BSSMAP_CLASSMARK_UPD, Args}, Data) ->
 	 bssap:encode_message({bssmap, ?BSSMAP_CLASSMARK_UPD, [{mobile_id, imsi}]})
 	 % FIXME transaction probably ought not be 0
 	},
-    {next_state, st_idle, [{classmark2, Cm2}, {classmark3, Cm3} | Data]};
-st_idle({bssmap, ?BSSMAP_COMPL_L3_INF, Params}, Data) ->
+    {next_state, st_mm_conn_act, [{classmark2, Cm2}, {classmark3, Cm3} | Data]};
+st_mm_conn_act({bssmap, ?BSSMAP_COMPL_L3_INF, Params}, Data) ->
     {unparsed, MsgBin} = proplists:get_value(l3_message, Params),
     incoming_0408(self(), MsgBin),
-    {next_state, st_idle, Data};
-st_idle({bssmap, Type, Params}, Data) ->
-    io:format("Mobile in idle got unk BSSMAP ~p message ~p~n", [Type, Params]),
-    {next_state, st_idle, Data};
-st_idle({Tag, Type, Params}, Data) ->
-    io:format("Mobile in idle got unk ~p:~p message ~p~n", [Tag, Type, Params]),
-    {next_state, st_idle, Data}.
+    {next_state, st_mm_conn_act, Data};
+st_mm_conn_act({bssmap, Type, Params}, Data) ->
+    io:format("Mobile in conn got unk BSSMAP ~p message ~p~n", [Type, Params]),
+    {next_state, st_mm_conn_act, Data};
+st_mm_conn_act({Tag, Type, Params}, Data) ->
+    io:format("Mobile in conn got unk ~p:~p message ~p~n", [Tag, Type, Params]),
+    {next_state, st_mm_conn_act, Data}.
 
 
 % WAIT FOR RR CONNECTION
 st_wait_for_rr(Event, Data) ->
     {next_state, st_wait_for_rr, Data}.
 
-% MM CONNECTION ACTIVE
-st_mm_conn_act(Event, Data) ->
-    {next_state, st_mm_conn_act, Data}.
 
 % IDENTIFICATION INITIATED
 st_ident_inited(timeout, Data) ->
     {next_state, st_mm_ident_inited, Data};
-st_ident_inited({dtap_mm, ident_resp, Args}, Data) ->
+st_ident_inited({dtap_mm, ?GSM48_MT_MM_ID_RESP, Args}, Data) ->
     io:format("Mobile got id response ~p~n", [Args]),
     {next_state, st_mm_ident_inited, Data};
 st_ident_inited({T, Type, Args}, Data) ->
@@ -167,3 +180,7 @@ st_cipher_inited(Event, Data) ->
 % WAIT FOR MOBILE ORIGINATED MM CONNECTION
 st_wait_mo_mm(Event, Data) ->
     {next_state, st_wait_mo_mm, Data}.
+
+% WAIT FOR REESTABLISHMENT
+st_wait_reest(Event, Data) ->
+	{next_state, st_wait_reest, Data}.
