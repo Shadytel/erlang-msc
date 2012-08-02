@@ -11,12 +11,15 @@
 -export([rx_message/4]).
 
 boot_link(Socket) ->
-    Looper = spawn(fun sccp_loop/0),
+    case (whereis(sccp_loop)) of
+	undefined ->
+	    Looper = spawn(fun sccp_loop/0),
+	    register(sccp_loop, Looper);
+	_ ->
+	    Looper = whereis(sccp_loop)
+    end,
     Looper ! {socket, Socket},
-    register(sccp_loop, Looper),
-    ipa_proto:register_stream(Socket, ?IPAC_PROTO_SCCP, {callback_fn, fun rx_message/4, []}),
-    io:format("Sending ip.access hello~n", []),
-    ipa_proto:send(Socket, 254, << 6 >>),
+    ipa_proto:send(Socket, 254, << 6 >>),  % send ip.access "Hello!"
     ok.
 
 % This routine accepts a fun, which is stored for later use.  When an
@@ -46,6 +49,7 @@ rx_message(_Socket, _Port, Data, []) ->
 sccp_loop() ->
     receive
 	{socket, Socket} ->
+	    ipa_proto:register_stream(Socket, ?IPAC_PROTO_SCCP, {callback_fn, fun rx_message/4, []}),
 	    sccp_machine:sccp_loop(Socket)
     end.
 
@@ -53,6 +57,9 @@ sccp_loop(Socket) ->
     receive
 	% change socket message
 	{socket, NewSocket} ->
+	    ipa_proto:unregister_stream(Socket, ?IPAC_PROTO_SCCP),
+	    gen_tcp:close(Socket),
+	    ipa_proto:register_stream(NewSocket, ?IPAC_PROTO_SCCP, {callback_fn, fun rx_message/4, []}),
 	    sccp_machine:sccp_loop(NewSocket);
 	{reg_dgram_callback, Fun} ->
 	    io:format("Registering datagram handler ~p for SCCP~n", [Fun]),
@@ -153,6 +160,9 @@ sccp_loop(Socket) ->
 	    % one of my workers has killed himself
 	    io:format("Removing entry ~p from local worker table~n", [LocalRef]),
 	    erase({sccp_local_ref, LocalRef}),
+	    sccp_machine:sccp_loop(Socket);
+	Message ->
+	    io:format("Unknown message to sccp_loop: ~p~n", [Message]),
 	    sccp_machine:sccp_loop(Socket)
     end.
 
@@ -162,9 +172,9 @@ sccp_loop(Socket) ->
 sccp_receive_dispatch(?SCCP_MSGT_CR, {2,0}, Params, _) ->
     RemoteRef = proplists:get_value(src_local_ref, Params),
     LocalRef = get_cur_local_ref(),
-    {ok, Pid} = mobile_mm_fsm:start_link(LocalRef, RemoteRef, self()),
     Self = self(),
-    Controller = spawn(fun () -> sccp_socket_loop(incoming, LocalRef, undefined, Self, Pid) end),
+    Controller = spawn(fun () -> {ok, Pid} = mobile_mm_fsm:start_link(LocalRef, RemoteRef, self()),
+				 sccp_socket_loop(incoming, LocalRef, undefined, Self, Pid) end),
 %    io:format("Link started using ~p as uplink~n", [Controller]),
     put({sccp_local_ref, LocalRef}, Controller),
     UserData = proplists:get_value(user_data, Params),
@@ -264,7 +274,7 @@ sccp_socket_loop(incoming, LocalRef, undefined, Downlink, Uplink) ->
     receive
 	{sccp_connect_request, LocalRef, RemoteRef, Msg} ->
 	    io:format("Sccp ref=~p/~p: accepting~n", [LocalRef, RemoteRef]),
-	    mobile_mm_fsm:assign(Uplink, self(), Msg),
+	    mobile_mm_fsm:rr_est_ind(Uplink, self()),
 	    mobile_mm_fsm:incoming(Uplink, Msg),
 	    sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, Uplink);
 	{_, LocalRef, RemoteRef} ->
@@ -274,6 +284,7 @@ sccp_socket_loop(incoming, LocalRef, undefined, Downlink, Uplink) ->
 
 sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, Uplink) ->
     Downlink ! {sccp_connect_confirm, LocalRef, RemoteRef},
+    mobile_mm_fsm:rr_est_ind(Uplink, self()),
     sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 
 sccp_socket_loop(outgoing, LocalRef, undefined, Downlink, Uplink) ->
@@ -309,6 +320,7 @@ sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink) ->
 	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_released, LocalRef, RemoteRef, Cause} ->
 	    Downlink ! {sccp_release_compl, LocalRef, RemoteRef},
+	    mobile_mm_fsm:rr_rel_ind(Uplink),
 	    self() ! {kill},
 	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_release_compl, LocalRef, RemoteRef} ->
