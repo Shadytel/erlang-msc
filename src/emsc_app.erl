@@ -11,16 +11,20 @@
 -include_lib("emsc/include/ipaccess.hrl").
 
 
--export([start/2, stop/1, link_state_handler/0]).
+-export([start/2, stop/1, link_state_handler/0, link_state_handler/1]).
 
 start(_App, _Type) ->
-    code:load_file(ipa_proto),
+    % code:load_file(ipa_proto),
     ipa_proto:init(),
-    ipa_proto:start_listen(6666, 1, [], spawn(emsc_app, link_state_handler, [])),
+    ipa_proto:start_listen(6666, 1, []),
+    spawn(emsc_app, link_state_handler, [init]),
     ok.
 
 stop(_State) ->
     ok.
+
+link_state_handler(init) ->
+    link_state_handler().
 
 link_state_handler() ->
     receive
@@ -29,6 +33,8 @@ link_state_handler() ->
 	    sccp_machine:boot_link(Socket),
 	    ok;
 	{link_down, _Socket} ->
+	    ok;
+	_ ->
 	    ok
     end,
     emsc_app:link_state_handler().
