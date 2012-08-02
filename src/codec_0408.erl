@@ -3,10 +3,10 @@
 
 -include_lib("emsc/include/dtap.hrl").
 
--export([parse_message/1]).
+-export([parse_message/1, encode_message/1]).
 -compile(export_all).
 
-parse_message(<<Skip:4, Discrim:4, Msg/binary>>) ->
+parse_message(<<Discrim:4, Skip:4, Msg/binary>>) ->
     case Skip of
 	0 ->
 	    parse_message(Discrim, Msg);
@@ -14,14 +14,20 @@ parse_message(<<Skip:4, Discrim:4, Msg/binary>>) ->
 	    {}
     end.
 
-parse_message(2#0011, <<0:1, Seq:1, Type:6, Msg/binary>>) ->
+parse_message(?GSM48_PDISC_CC, <<0:1, Seq:1, Type:6, Msg/binary>>) ->
     parse_cc_msg(Type, Seq, Msg);
-parse_message(2#0101, <<Type:8, Msg/binary>>) ->
+parse_message(?GSM48_PDISC_MM, <<Type:8, Msg/binary>>) ->
     parse_mm_msg(Type, Msg);
-parse_message(2#0110, <<Type:8, Msg/binary>>) ->
+parse_message(?GSM48_PDISC_RR, <<Type:8, Msg/binary>>) ->
     {dtap_rr, Type, Msg};
 parse_message(Discrim, <<Type:8, Msg/binary>>) ->
     {dtap_unknown, Discrim, Type, Msg}.
+
+encode_message({dtap_mm, Type, Msg}) ->
+    encode_mm_msg(Type, Msg);
+encode_message({dtap_cc, Type, Msg}) ->
+    encode_cc_msg(Type, Msg).
+
 
 % This file only contains routines to parse messages and elements that
 % are defined to come from mobile stations, and generation routines
@@ -75,6 +81,9 @@ parse_cc_msg(Type, Seq, Msg) ->
     {Mand, _Opt} = message_from_mt_cc(Type),
     {dtap_cc, Type, [{sequence, Seq} | parse_cc_ies(Mand, Msg)]}.
 
+encode_cc_msg(Type, Msg) ->
+    encode_cc_msg(Type, proplists:get_value(sequence, Msg), Msg).
+
 encode_cc_msg(Type, Seq, Msg) ->
     {Mand, Opt} = message_from_mt_cc(Type),
     encode_cc_msg(Type, Seq, Mand, Opt, Msg).
@@ -99,7 +108,7 @@ parse_cc_ies(_Expect, _Msg, []) ->
 parse_cc_ies([bearer_cap|T], <<Length:8, Bearer:Length/binary, Rest/bits>>, SoFar) ->
     parse_mm_ies(T, Rest, [{bearer_cap, {unparsed, Bearer}} | SoFar]);
 parse_cc_ies([], <<?GSM48_IE_BEARER_CAP:8, Rest/bits>>, SoFar) ->
-    parse_mm_ies([bearer_cap], Rest, SoFar);
+    parse_mm_ies([bearer_cap], Rest, SoFar).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -123,16 +132,30 @@ message_from_mt_mm(Type) ->
 	?GSM48_MT_MM_IMSI_DETACH_IND -> {[classmark_1, ?GSM48_IE_MOBILE_ID], []};
 	?GSM48_MT_MM_LOC_UPD_ACCEPT -> {[?GSM48_IE_LOCATION_AREA], [?GSM48_IE_MOBILE_ID, ?GSM48_IE_FOLLOW_ON_PROC]};
 	?GSM48_MT_MM_LOC_UPD_REJECT -> {[rej_cause], []};
-	?GSM48_MT_MM_LOC_UPD_REQUEST -> {[loc_upd_type, ciph_key_seq_nr, ?GSM48_IE_LOCATION_AREA, classmark_1, ?GSM48_IE_MOBILE_ID], []};
+	?GSM48_MT_MM_LOC_UPD_REQUEST -> {[loc_upd_type, cipher_key_seq, ?GSM48_IE_LOCATION_AREA, classmark_1, ?GSM48_IE_MOBILE_ID], []};
 	?GSM48_MT_MM_INFO -> {[], [?GSM48_IE_NAME_LONG, ?GSM48_IE_NAME_SHORT, ?GSM48_IE_UTC, ?GSM48_IE_NET_TIME_TZ]};
 	?GSM48_MT_MM_STATUS -> {[rej_cause], []};
 	?GSM48_MT_MM_TMSI_REALL_CMD -> {[?GSM48_IE_LOCATION_AREA, ?GSM48_IE_MOBILE_ID], []};
-	?GSM48_MT_MM_TMSI_REALL_COMPL -> {[], []}
+	?GSM48_MT_MM_TMSI_REALL_COMPL -> {[], []};
+	?GSM48_MT_MM_NULL -> {[], []}
     end.
 
 parse_mm_msg(Type, Msg) ->
     {Mand, _Opt} = message_from_mt_mm(Type),
     {dtap_mm, Type, parse_mm_ies(Mand, Msg)}.
+
+encode_mm_msg(Type, Msg) ->
+    {Mand, Opt} = message_from_mt_mm(Type),
+    erlang:list_to_binary([<< ?GSM48_PDISC_MM:4, 0:4, Type:8 >>, encode_mm_msg(Type, Mand, Opt, Msg)]).
+
+encode_mm_msg(Type, [], [], Msg) ->
+    [];
+
+encode_mm_msg(Type, [], [Next|Opt], Msg) ->
+    [enc_mm_ie(opt, Next, Msg) | encode_mm_msg(Type, [], Opt, Msg)];
+
+encode_mm_msg(Type, [Next|Mand], Opt, Msg) ->
+    [enc_mm_ie(mand, Next, Msg) | encode_mm_msg(Type, Mand, Opt, Msg)].
 
 
 parse_mm_ies(Expect, Msg) ->
@@ -180,6 +203,9 @@ parse_mm_ies([loc_upd_type|T], <<Follow:1, _:1, TypeBin:2, Rest/bits>>, SoFar) -
                2#11 -> undefined
            end,
     parse_mm_ies(T, Rest, [{loc_upd_type, [{type, Type}, {follow_on, Follow}]} | SoFar]);
+% 10.5.3.6
+parse_mm_ies([rej_cause|T], <<Cause:8, Rest/bits>>, SoFar) ->
+    parse_mm_ies(T, Rest, [{rej_cause, Cause} | SoFar]);
 % 10.5.4.12
 parse_mm_ies([cong_lev|T], <<Cong:4, Rest/bits>>, SoFar) ->
     case Cong of
@@ -224,7 +250,7 @@ parse_mm_ies([], <<?GSM48_IE_USER_USER:8, Msg/bits>>, SoFar) ->
 
 % (mand/opt, type, data) -> <<IE>>/bits with type-tag if necessary
 enc_mm_ie(mand, spare_half, D) ->
-    << 0:4/bits >>;
+    << 0:4 >>;
 
 enc_mm_ie(mand, rand, D) ->
     Rand = proplists:get_value(rand, D),
@@ -232,7 +258,7 @@ enc_mm_ie(mand, rand, D) ->
 
 enc_mm_ie(mand, cipher_key_seq, D) ->
     Seq = proplists:get_value(cipher_key_seq, D),
-    << 0:1/bits, Seq:3/bits >>;
+    << 0:1, Seq:3 >>;
 
 enc_mm_ie(mand, rej_cause, D) ->
     Cause = proplists:get_value(rej_cause, D),
@@ -247,40 +273,60 @@ enc_mm_ie(mand, id_type, D) ->
 	       tmsi -> 2#100
 	   end):3 >>;
 
-enc_mm_ie(mand, ?GSM48_IE_MOBILE_ID, D) ->
-    enc_ie(?GSM48_IE_MOBILE_ID, D);
-enc_mm_ie(opt, ?GSM48_IE_MOBILE_ID, D) ->
-    << ?GSM48_IE_MOBILE_ID:8, (enc_mm_ie(mand, ?GSM48_IE_MOBILE_ID, D))/bits >>;
+enc_mm_ie(mand, T = ?GSM48_IE_MOBILE_ID, D) ->
+    enc_ie(T, D);
+enc_mm_ie(opt, T = ?GSM48_IE_MOBILE_ID, D) ->
+    << T:8, (enc_mm_ie(mand, T, D))/bits >>;
 
-enc_mm_ie(mand, ?GSM48_IE_LOCATION_AREA, D) ->
-    enc_ie(?GSM48_IE_LOCATION_AREA, D);
-enc_mm_ie(opt, ?GSM48_IE_LOCATION_AREA, D) ->
-    << ?GSM48_IE_LOCATION_AREA:8, (enc_mm_ie(mand, ?GSM48_IE_LOCATION_AREA, D))/bits >>;
+enc_mm_ie(mand, T = ?GSM48_IE_LOCATION_AREA, D) ->
+    enc_ie(T, D);
+enc_mm_ie(opt, T = ?GSM48_IE_LOCATION_AREA, D) ->
+    case proplists:is_defined(lai, D) of
+	true -> << T:8, (enc_mm_ie(mand, T, D))/bits >>;
+	_ -> << >>
+    end;
 
-enc_mm_ie(mand, ?GSM48_IE_NAME_LONG, D) ->
+enc_mm_ie(mand, T = ?GSM48_IE_NAME_LONG, D) ->
     {AddCI, Text} = proplists:get_value(name_long, D),
     Scheme = 2#000,
-    {TEnc, Spare} = common_0408:encode_0338_ascii(Text),
-    Encoded = << 1:1, Scheme:3, (binarize(AddCI)):1, Spare:3, Text/binary >>,
+    {_, _, Spare, TEnc} = common_0408:encode_0338_ascii(Text),
+    Encoded = << 1:1, Scheme:3, (common_0408:binarize(AddCI)):1, Spare:3, TEnc/binary >>,
     Len = byte_size(Encoded),
     << Len:8, Encoded/binary >>;
-enc_mm_ie(opt, ?GSM48_IE_NAME_LONG, D) ->
-    << ?GSM48_IE_NAME_LONG:8, (enc_mm_ie(mand, ?GSM48_IE_NAME_LONG, D))/binary >>;
+enc_mm_ie(opt, T = ?GSM48_IE_NAME_LONG, D) ->
+    case proplists:is_defined(name_long, D) of
+	true -> << T:8, (enc_mm_ie(mand, T, D))/binary >>;
+	_ -> << >>
+    end;
 
 enc_mm_ie(mand, ?GSM48_IE_NAME_SHORT, D) ->
-    enc_mm_ie(mand, ?GSM48_IE_NAME_LONG, D);
-enc_mm_ie(opt, ?GSM48_IE_NAME_SHORT, D) ->
-    << ?GSM48_IE_NAME_SHORT:8, (enc_mm_ie(mand, ?GSM48_IE_NAME_SHORT, D))/binary >>;
+    {AddCI, Text} = proplists:get_value(name_short, D),
+    Scheme = 2#000,
+    {_, _, Spare, TEnc} = common_0408:encode_0338_ascii(Text),
+    Encoded = <<1:1, Scheme:3, (common_0408:binarize(AddCI)):1, Spare:3, TEnc/binary>>,
+    Len = byte_size(Encoded),
+    << Len:8, Encoded/binary >>;
+enc_mm_ie(opt, T = ?GSM48_IE_NAME_SHORT, D) ->
+    case proplists:is_defined(name_short, D) of
+	true -> << T:8, (enc_mm_ie(mand, T, D))/binary >>;
+	_ -> << >>
+    end;
 
-enc_mm_ie(opt, ?GSM48_IE_FOLLOW_ON_PROC, D) ->
-    << ?GSM48_IE_FOLLOW_ON_PROC:8 >>;
+enc_mm_ie(opt, T = ?GSM48_IE_FOLLOW_ON_PROC, D) ->
+    case proplists:is_defined(follow_on_proc, D) of
+	true -> << T:8 >>;
+	_ -> << >>
+    end;
 
-enc_mm_ie(mand, ?GSM48_IE_UTC) ->
-    
+enc_mm_ie(opt, _T, _D) ->
+    << >>;
+
+enc_mm_ie(mand, ?GSM48_IE_UTC, D) ->
+    error.
 
 
 enc_ie(?GSM48_IE_MOBILE_ID, D) ->
-    error.
+    error;
 enc_ie(?GSM48_IE_LOCATION_AREA, D) ->
     {MCC, MNC, LAC} = proplists:get_value(lai, D),
     error.

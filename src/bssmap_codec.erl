@@ -352,11 +352,9 @@ parse_ies([omc_id|T], <<Len:8, ID:Len/bytes, Rest/binary>>, SoFar) ->
 parse_ies([], <<?ELEM_FORWARD_IND:8, Rest/binary>>, SoFar) ->
     parse_ies([forward_ind], Rest, SoFar);
 parse_ies([forward_ind|T], <<_:4, Fwd:4, Rest/binary>>, SoFar) ->
-    if
-	Fwd == 2#0001 ->
-	    Ind = forward;
-	Fwd == 2#0010 ->
-	    Ind = forward_and_trace
+    Ind = case Fwd of
+	2#0001 -> forward;
+	2#0010 -> forward_and_trace
     end,
     parse_ies(T, Rest, [{forward_ind, Ind} | SoFar]);
 

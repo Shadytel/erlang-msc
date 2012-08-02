@@ -1,6 +1,7 @@
 -module(common_0408).
 -author("Duncan Smith <Duncan@xrtc.net>").
 
+-export([binarize/1]).
 -export([parse_mobile_id/1, encode_mobile_id/2]).
 -export([parse_classmark_1/1, encode_classmark_1/1]).
 -export([parse_classmark_2/1, encode_classmark_2/1]).
@@ -29,7 +30,7 @@ encode_mobile_id(Type, Text) ->
 % encode and decode textual data as per the fucked-up packing scheme
 % described in GSM TS 03.38.
 decode_0338_ascii(SpareCount, Data) ->
-    ok.
+    error.
 
 % return {SMSCoding, CBCoding, Spare, EncodedText}
 encode_0338_ascii(Text) ->
