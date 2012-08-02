@@ -1,9 +1,10 @@
 -module(common_0408).
 -author("Duncan Smith <Duncan@xrtc.net>").
 
--export([parse_mobile_id/1, encode_mobile_id/2,
-	 parse_classmark_1/1, encode_classmark_1/1,
-	 parse_classmark_2/1, encode_classmark_2/1]).
+-export([parse_mobile_id/1, encode_mobile_id/2]).
+-export([parse_classmark_1/1, encode_classmark_1/1]).
+-export([parse_classmark_2/1, encode_classmark_2/1]).
+-export([decode_0338_ascii/2, encode_0338_ascii/1]).
 
 parse_mobile_id(<<Dig1:4, Odd:1, TypeBin:3, Tail/binary>>) ->
 
@@ -24,6 +25,23 @@ parse_mobile_id(<<Dig1:4, Odd:1, TypeBin:3, Tail/binary>>) ->
 
 encode_mobile_id(Type, Text) ->
     ok.
+
+% encode and decode textual data as per the fucked-up packing scheme
+% described in GSM TS 03.38.
+decode_0338_ascii(SpareCount, Data) ->
+    ok.
+
+% return {SMSCoding, CBCoding, Spare, EncodedText}
+encode_0338_ascii(Text) ->
+    Bitted = erlang:list_to_bitstring([lists:reverse(lists:map( ( fun (E) -> << E:7 >> end ), Text))]),
+    Sp = (8 - (erlang:bit_size(Bitted) rem 8)),
+    Spare = if (Sp == 8) -> 0;
+	       true -> Sp
+	    end,
+    Encoded = erlang:list_to_binary(lists:reverse(erlang:binary_to_list(<< 0:Spare, Bitted/bits >>))),
+    {2#00000000, 2#01010000, Spare, Encoded}.
+
+
 
 parse_classmark_1(<<_:1, Rev:2, Early:1, A51:1, Power:3>>) ->
     lists:flatten([{revision, Rev},
