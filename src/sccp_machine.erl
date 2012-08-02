@@ -8,6 +8,8 @@
 
 -export([sccp_loop/0, sccp_loop/1]).
 
+-export([rx_message/4]).
+
 boot_link(Socket) ->
     Looper = spawn(fun sccp_loop/0),
     Looper ! {socket, Socket},
@@ -21,29 +23,25 @@ boot_link(Socket) ->
 % incoming connection is created, a new process is spawned starting at
 % Fun.  It is sent the message {kill} when the connection is closed.
 reg_connect_callback(Fun) ->
-    Looper = whereis(sccp_loop),
-    Looper ! {reg_connect_callback, Fun}.
+    whereis(sccp_loop) ! {reg_connect_callback, Fun}.
 
 % Much like reg_connect_callback, but Fun is spawned for every
 % datagram reception.  It is sent exactly one message: {sccp_message,
 % Msg}, where Msg is a binary.  It is expected that Fun will die when
 % its task has been completed.
 reg_dgram_callback(Fun) ->
-    Looper = whereis(sccp_loop),
-    Looper ! {reg_dgram_callback, Fun}.
+    whereis(sccp_loop) ! {reg_dgram_callback, Fun}.
 
 % This routine initiates a connection, spawns Fun, and sends it
 % messages from that connection exactly like reg_connect_callback.
 connect(Fun) ->
-    Looper = whereis(sccp_loop),
-    Looper ! {connect, Fun}.
+    whereis(sccp_loop) ! {connect, Fun}.
 
 
 rx_message(_Socket, _Port, Data, []) ->
-    Looper = whereis(sccp_loop),
     {ok, Msg} = sccp_codec:parse_sccp_msg(Data),
     io:format("Got SCCP message~n ->~p~n ->~p~n", [Data, Msg]),
-    Looper ! Msg.
+    whereis(sccp_loop) ! Msg.
 
 sccp_loop() ->
     receive
@@ -283,7 +281,7 @@ sccp_socket_loop(outgoing, LocalRef, undefined, Downlink, Uplink) ->
 
 sccp_socket_loop(outgoing, LocalRef, RemoteRef, Downlink, Uplink) ->
     receive
-	{sccp_connect_confirm, LocalRef, _RemoteRef, Msg} ->
+	{sccp_connect_confirm, LocalRef, RemoteRef, Msg} ->
 	    io:format("Sccp ref=~p: Confirmed~n", [LocalRef]),
 	    Userdata = proplists:get_value(user_data, Msg),
 	    if
