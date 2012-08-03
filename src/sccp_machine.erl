@@ -7,7 +7,7 @@
 -export([boot_link/1, reg_connect_callback/1, reg_dgram_callback/1, connect/1]).
 
 -export([sccp_loop/0, sccp_loop/1]).
-
+-export([sccp_socket_loop/5]).
 -export([rx_message/4]).
 
 boot_link(Socket) ->
@@ -43,7 +43,7 @@ connect(Fun) ->
 
 rx_message(_Socket, _Port, Data, []) ->
     {ok, Msg} = sccp_codec:parse_sccp_msg(Data),
-    io:format("Got SCCP message~n ->~p~n ->~p~n", [Data, Msg]),
+%    io:format("Got SCCP message~n ->~p~n ->~p~n", [Data, Msg]),
     whereis(sccp_loop) ! Msg.
 
 sccp_loop() ->
@@ -121,7 +121,7 @@ sccp_loop(Socket) ->
 	    sccp_machine:sccp_loop(Socket);
 	{sccp_message_out, LocalRef, RemoteRef, Msg} ->
 	    % send out a message
-	    io:format("About to encode & send ~p~n", [Msg]),
+%	    io:format("About to encode & send ~p~n", [Msg]),
 	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg)),
 	    sccp_machine:sccp_loop(Socket);
 	{sccp_connect_confirm, LocalRef, RemoteRef} ->
@@ -137,18 +137,19 @@ sccp_loop(Socket) ->
 	    Msg = {sccp_msg, ?SCCP_MSGT_RLSD, [{src_local_ref, LocalRef},
 					       {dst_local_ref, RemoteRef},
 					       {release_cause, Cause}]},
-	    io:format("Sccp releasing ref=~p/~p: ~p~n", [LocalRef, RemoteRef, Msg]),
+%	    io:format("Sccp releasing ref=~p/~p: ~p~n", [LocalRef, RemoteRef, Msg]),
 	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg)),
 	    sccp_machine:sccp_loop(Socket);
 	{sccp_release_compl, LocalRef, RemoteRef} ->
 	    % Release from BSS direction
-	    io:format("Sccp release complete ref=~p/~p~n", [LocalRef, RemoteRef]),
+%	    io:format("Sccp release complete ref=~p/~p~n", [LocalRef, RemoteRef]),
 	    Msg = {sccp_msg, ?SCCP_MSGT_RLC, [{src_local_ref, LocalRef},
 					      {dst_local_ref, RemoteRef}]},
 	    erase({sccp_local_ref, LocalRef}),
 	    ipa_proto:send(Socket, ?IPAC_PROTO_SCCP, sccp_codec:encode_sccp_msg(Msg)),
 	    sccp_machine:sccp_loop(Socket);
 	{sccp_ping, To, From} ->
+%	    io:format("Sccp ping~n", []),
 	    Msg = {sccp_msg, ?SCCP_MSGT_IT, [{dst_local_ref, To},
 					     {src_local_ref, From},
 					     {protocol_class, {2,0}},
@@ -158,7 +159,7 @@ sccp_loop(Socket) ->
 	    sccp_machine:sccp_loop(Socket);
 	{killed, LocalRef} ->
 	    % one of my workers has killed himself
-	    io:format("Removing entry ~p from local worker table~n", [LocalRef]),
+	    io:format("Removing entry ~p from SCCP local worker table~n", [LocalRef]),
 	    erase({sccp_local_ref, LocalRef}),
 	    sccp_machine:sccp_loop(Socket);
 	Message ->
@@ -201,6 +202,7 @@ sccp_receive_dispatch(?SCCP_MSGT_RLSD, _, Params, Controller) ->
 sccp_receive_dispatch(?SCCP_MSGT_RLC, _, Params, Controller) ->
     RemoteRef = proplists:get_value(src_local_ref, Params),
     LocalRef = proplists:get_value(dst_local_ref, Params),
+%    io:format("Sccp release compl ref=~p/~p~n", [LocalRef, RemoteRef]),
     Controller ! {sccp_release_compl, LocalRef, RemoteRef};
 
     % Connection-oriented dataframe type 1 from BSS direction
@@ -273,19 +275,20 @@ get_cur_remote_ref(Local) ->
 sccp_socket_loop(incoming, LocalRef, undefined, Downlink, Uplink) ->
     receive
 	{sccp_connect_request, LocalRef, RemoteRef, Msg} ->
-	    io:format("Sccp ref=~p/~p: accepting~n", [LocalRef, RemoteRef]),
+%	    io:format("Sccp ref=~p/~p: accepting~n", [LocalRef, RemoteRef]),
 	    mobile_mm_fsm:rr_est_ind(Uplink, self()),
 	    mobile_mm_fsm:incoming(Uplink, Msg),
-	    sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, Uplink);
+	    sccp_machine:sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, Uplink);
 	{_, LocalRef, RemoteRef} ->
-	    io:format("Sccp ref=~p/~p: NOPE~n", [LocalRef, RemoteRef]),
-	    Downlink ! {sccp_released, LocalRef, RemoteRef, ?SCCP_CAUSE_REL_INCONS_CONN_DAT}
+%	    io:format("Sccp ref=~p/~p: NOPE~n", [LocalRef, RemoteRef]),
+	    Downlink ! {sccp_released, LocalRef, RemoteRef, ?SCCP_CAUSE_REL_INCONS_CONN_DAT},
+	    sccp_machine:sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, Uplink)
     end;
 
 sccp_socket_loop(incoming, LocalRef, RemoteRef, Downlink, Uplink) ->
     Downlink ! {sccp_connect_confirm, LocalRef, RemoteRef},
     mobile_mm_fsm:rr_est_ind(Uplink, self()),
-    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
+    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 
 sccp_socket_loop(outgoing, LocalRef, undefined, Downlink, Uplink) ->
     Downlink ! {sccp_connect, LocalRef, undefined};
@@ -293,50 +296,50 @@ sccp_socket_loop(outgoing, LocalRef, undefined, Downlink, Uplink) ->
 sccp_socket_loop(outgoing, LocalRef, RemoteRef, Downlink, Uplink) ->
     receive
 	{sccp_connect_confirm, LocalRef, RemoteRef, Msg} ->
-	    io:format("Sccp ref=~p: Confirmed~n", [LocalRef]),
+%	    io:format("Sccp ref=~p: Confirmed~n", [LocalRef]),
 	    Userdata = proplists:get_value(user_data, Msg),
 	    if
 		% if there's userdata, loop it back in so I can process it later
 		is_binary(Userdata) ->
-		    io:format("Looping in userdata ~p~n", [Msg]),
+%		    io:format("Looping in userdata ~p~n", [Msg]),
 		    self() ! {sccp_message, LocalRef, RemoteRef, Msg}
 	    end,
 	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	Msg ->
-	    io:format("Sccp ref=~p/~p: Failure to confirm (~p), killing~n", [LocalRef, RemoteRef, Msg]),
+%	    io:format("Sccp ref=~p/~p: Failure to confirm (~p), killing~n", [LocalRef, RemoteRef, Msg]),
 	    Downlink ! {sccp_released, LocalRef, RemoteRef, ?SCCP_CAUSE_REL_SCCP_FAILURE}
     end;
 sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink) ->
     receive
 	{sccp_message, LocalRef, _, Msg} ->
 	    mobile_mm_fsm:incoming(Uplink, Msg),
-	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
+	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_message, _, LocalRef, Msg} ->
 	    io:format("Sccp ref=~p/~p: Sending a message~n", [LocalRef, RemoteRef]),
 	    Downlink ! {sccp_message_out, LocalRef, RemoteRef, Msg}, % not sure about the tuple member order
-	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
+	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_ping, LocalRef, RemoteRef} ->
 	    Downlink ! {sccp_ping, RemoteRef, LocalRef},
-	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
+	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_released, LocalRef, RemoteRef, Cause} ->
 	    Downlink ! {sccp_release_compl, LocalRef, RemoteRef},
 	    mobile_mm_fsm:rr_rel_ind(Uplink),
 	    self() ! {kill},
-	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
+	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_release_compl, LocalRef, RemoteRef} ->
 	    self() ! {kill},
-	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
+	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{close, Cause} ->
 % by GSM 08.06 sec 6.2, this can only be initiated by the MSC/network side.
-	    io:format("Sccp ref=~p/~p: Killing myself~n", [LocalRef, RemoteRef]),
+%	    io:format("Sccp ref=~p/~p: Killing myself~n", [LocalRef, RemoteRef]),
 	    mobile_mm_fsm:terminate(Uplink, Cause),
-	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
+	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{kill} ->
-	    io:format("Sccp ref=~p/~p: Killing myself~n", [LocalRef, RemoteRef]),
+%	    io:format("Sccp ref=~p/~p: Killing myself~n", [LocalRef, RemoteRef]),
 	    Downlink ! {killed, LocalRef};
 	Msg ->
 	    io:format("Sccp ref=~p/~p: Unknown message:~n --> ~p~n", [LocalRef, RemoteRef, Msg]),
-	    sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink)
+	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink)
     end.
 
 

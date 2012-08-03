@@ -29,7 +29,7 @@ encode_message({bssmap, Msg}) ->
     <<?SCCP_DISCRIM_BSSMAP:8, Len:8, MsgBin/binary>>;
 
 encode_message({dtap, Msg}) ->
-    {DLCI, MsgBin} = dtap_codec:encode_message(Msg),
+    {DLCI, MsgBin} = codec_0408:encode_message(Msg),
     Len = byte_size(MsgBin),
     <<?SCCP_DISCRIM_DTAP:8, DLCI:8, Len:8, MsgBin/binary>>.
 

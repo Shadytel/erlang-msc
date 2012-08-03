@@ -22,12 +22,15 @@
 -export([st_idle_offl/2,
 	 st_idle/2,
 	 st_wait_for_rr/2,
+-export([st_idle/2,
 	 st_mm_conn_act/2,
+	 st_wait_for_rr/2,
 	 st_ident_inited/2,
 	 st_auth_inited/2,
 	 st_tmsi_inited/2,
 	 st_cipher_inited/2,
-	 st_wait_mo_mm/2
+	 st_wait_mo_mm/2,
+	 st_wait_reest/2
 	]).
 
 % This module defines the MSC's model of a mobile station's behavior.
