@@ -171,6 +171,18 @@ parse_mm_ies(_, <<>>, SoFar) ->
 % 10.5.1.2
 parse_mm_ies([cipher_key_seq|T], <<0:1, Seq:3, Rest/bits>>, SoFar) ->
     parse_mm_ies(T, Rest, [{cipher_key_seq, Seq} | SoFar]);
+% 10.5.3.3
+parse_mm_ies([cm_serv_type|T], <<TypeInt:4, Rest/bits>>, SoFar) ->
+    Type = case TypeInt of
+	       2#0001 -> mo_call;
+	       2#0010 -> emerg_call;
+	       2#0100 -> sms;
+	       2#1000 -> suppl_serv;
+	       2#1001 -> v_group_est;
+	       2#1010 -> v_broadcast_est;
+	       _ -> TypeInt
+	   end,
+    parse_mm_ies(T, Rest, [{cm_serv_type, Type} | SoFar]);
 % 10.5.1.3
 parse_mm_ies([], <<?GSM48_IE_LOCATION_AREA:8, Rest/binary>>, SoFar) ->
     parse_mm_ies([lai], Rest, SoFar);
