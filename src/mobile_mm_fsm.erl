@@ -22,9 +22,6 @@
 -export([st_idle_offl/2,
 	 st_idle/2,
 	 st_wait_for_rr/2,
--export([st_idle/2,
-	 st_mm_conn_act/2,
-	 st_wait_for_rr/2,
 	 st_ident_inited/2,
 	 st_auth_inited/2,
 	 st_tmsi_inited/2,
@@ -143,7 +140,7 @@ txn_begin(FsmRef, TxnId) ->
     gen_fsm:send_all_state_event(FsmRef, {txn_begin, TxnId, self()}).
 
 txn_end(FsmRef, TxnId) ->
-    gen_fsm:send_all_state_event(FsmRef, {txn_end, TxnId, Self()}).
+    gen_fsm:send_all_state_event(FsmRef, {txn_end, TxnId, self()}).
 
 outgoing(FsmRef, Message) ->
     gen_fsm:send_event(FsmRef, {msg_out, Message}).
@@ -156,7 +153,7 @@ outgoing(FsmRef, Message) ->
 % No RR connection exists, and no MM procedures are running.
 st_idle_offl({rr_est_ind, Downlink}, Data) ->
     NewData = replace_data(Data, {downlink, Downlink}),
-    {next_state, st_idle, NewData};
+    {next_state, st_idle, NewData}.
 
 % An RR connection exists, but no MM procedures are running.
 st_idle({dtap_mm, ?GSM48_MT_MM_LOC_UPD_REQUEST, Args}, Data) ->
@@ -170,7 +167,7 @@ st_idle({dtap_mm, ?GSM48_MT_MM_LOC_UPD_REQUEST, Args}, Data) ->
     {next_state, st_idle, NewData};
 st_idle({dtap_mm, ?GSM48_MT_MM_CM_REEST_REQ, Args}, Data) ->
     send_to_mobile(Data, {dtap, {dtap_mm,
-				 ?GSM48_MT_MM_CM_SERV_REJECT,
+				 ?GSM48_MT_MM_CM_SERV_REJ,
 				 [{rej_cause, 2#00100000} % service option not supported, 10.5.3.6
 				  ]}}),
     {next_state, st_idle, Data};
@@ -181,18 +178,18 @@ st_idle({dtap_mm, ?GSM48_MT_MM_CM_SERV_REQ, Args}, Data) ->
 	mo_call ->
 	    mobile_cc_fsm:start_link(self()),
 	    send_to_mobile(NewData, {dtap, {dtap_mm,
-					    ?GSM48_MT_MM_CM_SERV_ACCEPT,
+					    ?GSM48_MT_MM_CM_SERV_ACC,
 					    []}}),
 	    {next_state, st_mm_conn_act, NewData};
 	sms ->
 	    mobile_sms_fsm:start_link(self()),
 	    send_to_mobile(NewData, {dtap, {dtap_mm,
-					    ?GSM48_MT_MM_CM_SERV_ACCEPT,
+					    ?GSM48_MT_MM_CM_SERV_ACC,
 					    []}}),
 	    {next_state, st_mm_conn_act, NewData};
 	_ -> % add USSD state machine call here
 	    send_to_mobile(NewData, {dtap, {dtap_mm,
-					    ?GSm48_MT_MM_CM_SERV_REJECT,
+					    ?GSM48_MT_MM_CM_SERV_REJ,
 					    [{rej_cause, 2#00100000} % service option not supported, 10.5.3.6
 					    ]}}),
 	    {next_state, st_idle, NewData}
@@ -222,7 +219,7 @@ st_mm_conn_act({dtap_mm, T = ?GSM48_MT_MM_CM_SERV_REQ, Args}, Data) ->
     % Request for an additional connection.  Follow the same procedure
     % as in idle state, but don't return to idle state if it fails.
     {next_state, State, NewData} = st_idle({dtap_mm, T, Args}, Data),
-    {next_state, st_mm_conn_act, NewData}
+    {next_state, st_mm_conn_act, NewData};
 st_mm_conn_act({Tag, Type, Params}, Data) ->
     io:format("Mobile in conn got unk ~p:~p message ~p~n", [Tag, Type, Params]),
     {next_state, st_mm_conn_act, Data}.
