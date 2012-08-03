@@ -119,14 +119,14 @@ message_from_mt_mm(Type) ->
     case Type of
 	% Type -> {[mandatory], [optional]}
 	?GSM48_MT_MM_AUTH_REJ -> {[], []};
-	?GSM48_MT_MM_AUTH_REQ -> {[ciph_key_seq_nr, spare_half, rand], []};
+	?GSM48_MT_MM_AUTH_REQ -> {[cipher_key_seq, spare_half, rand], []};
 	?GSM48_MT_MM_AUTH_RESP -> {[auth_param_sres], []};
 	?GSM48_MT_MM_CM_REEST_REQ -> {[cipher_key_seq, spare_half, classmark_2, ?GSM48_IE_MOBILE_ID], [?GSM48_IE_LOCATION_AREA]};
 	?GSM48_MT_MM_CM_SERV_ACC -> {[], []};
 	?GSM48_MT_MM_CM_SERV_REJ -> {[rej_cause], []};
 	?GSM48_MT_MM_CM_SERV_ABORT -> {[], []};
 	?GSM48_MT_MM_ABORT -> {[rej_cause], []};
-	?GSM48_MT_MM_CM_SERV_REQ -> {[ciph_key_seq_nr, classmark_2, ?GSM48_IE_MOBILE_ID], []};
+	?GSM48_MT_MM_CM_SERV_REQ -> {[cm_serv_type, cipher_key_seq, classmark_2, ?GSM48_IE_MOBILE_ID], []};
 	?GSM48_MT_MM_ID_REQ -> {[id_type, spare_half], []};
 	?GSM48_MT_MM_ID_RESP -> {[?GSM48_IE_MOBILE_ID], []};
 	?GSM48_MT_MM_IMSI_DETACH_IND -> {[classmark_1, ?GSM48_IE_MOBILE_ID], []};
