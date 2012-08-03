@@ -16,7 +16,8 @@
 -export([init/1, handle_event/3, handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
 % state callbacks
--export([st_idle/2,
+-export([st_idle_offl/2,
+	 st_idle/2,
 	 st_wait_for_rr/2,
 	 st_mm_conn_act/2,
 	 st_ident_inited/2,
@@ -46,7 +47,7 @@ start_link(LocalRef, RemoteRef, Sender) ->
 %% gen_fsm interworking
 
 init([LocalRef, RemoteRef, Sender]) ->
-    {ok, st_idle, [{localref, LocalRef}, {remoteref, RemoteRef}, {downlink, Sender}]}.
+    {ok, st_idle_offl, [{localref, LocalRef}, {remoteref, RemoteRef}, {downlink, Sender}]}.
 
 %% StateName is an atom
 %%
@@ -117,9 +118,9 @@ rr_est_cnf(FsmRef) ->
 
 % IDLE
 % No RR connection exists, and no MM procedures are running.
-st_idle({rr_est_ind, Downlink}, Data) ->
-    NewData = lists:append([{downlink, Downlink}], proplists:delete(downlink, Data)),
-    {next_state, mm_conn_act, NewData}.
+st_idle_offl({rr_est_ind, Downlink}, Data) ->
+    NewData = replace_data(Data, {downlink, Downlink}),
+    {next_state, st_idle, NewData};
 
 % MM CONNECTION ACTIVE
 % An RR connection exists, but no MM procedures are running.
