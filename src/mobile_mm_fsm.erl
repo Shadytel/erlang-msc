@@ -7,10 +7,13 @@
 -include_lib("emsc/include/timers.hrl").
 
 % api
--export([rr_est_ind/2, rr_rel_ind/1, rr_est_cnf/1, start_link/3]).
+-export([start_link/3]).
 
-% external interfaces
--export([incoming/2]).
+% external interfaces to the downward layer
+-export([rr_est_ind/2, rr_rel_ind/1, rr_est_cnf/1, incoming/2]).
+
+% external interfaces to the upward layer
+-export([txn_gimme/1, txn_begin/2, txn_end/2, outgoing/2]).
 
 % gen_fsm callbacks
 -export([init/1, handle_event/3, handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
@@ -85,12 +88,12 @@ code_change(Old, StateName, Data, Extra) ->
     {ok, StateName, Data}.
 
 %% ============================================================
-%% external api
+%% external interfaces to the downward layer
 
 % Accept a message from the mobile station
 incoming(FsmRef, Message) ->
     gen_fsm:send_event(FsmRef, bssap:parse_message(Message)).
-
+% function used internally only, put here for consistency
 incoming_0408(FsmRef, Message) ->
     gen_fsm:send_event(FsmRef, codec_0408:parse_message(Message)).
 
@@ -112,6 +115,22 @@ rr_rel_ind(FsmRef) ->
 rr_est_cnf(FsmRef) ->
     io:format("rr_est_cnf from rr to mm~n"),
     gen_fsm:send_all_state_event(FsmRef, {rr_est_cnf}).
+
+%% ============================================================
+%% external interfaces to the upward layer
+
+txn_gimme(FsmRef) ->
+    gen_fsm:send_all_state_sync_event(FsmRef, {txn_gimme}).
+
+txn_begin(FsmRef, TxnId) ->
+    gen_fsm:send_all_state_event(FsmRef, {txn_begin, TxnId, self()}).
+
+txn_end(FsmRef, TxnId) ->
+    gen_fsm:send_all_state_event(FsmRef, {txn_end, TxnId, Self()}).
+
+outgoing(FsmRef, Message) ->
+    gen_fsm:send_event(FsmRef, {msg_out, Message}).
+
 
 %% ============================================================
 %% States
