@@ -87,6 +87,20 @@ terminate(Reason, StateName, Data) ->
 code_change(Old, StateName, Data, Extra) ->
     {ok, StateName, Data}.
 
+
+send_to_mobile(Data, Message) ->
+    proplists:get_value(downlink, Data) !
+	{sccp_data_out,
+	 proplists:get_value(localref, Data),
+	 proplists:get_value(remoteref, Data),
+	 bssap:encode_message(Message)}.
+
+replace_data(Data, {Type, Value}) ->
+    [{Type, Value} | proplists:delete(Type, Data)];
+replace_data(Data, [{Type, Value}|T]) ->
+    replace_data(replace_data(Data, {Type, Value}), T).
+
+
 %% ============================================================
 %% external interfaces to the downward layer
 
@@ -141,28 +155,71 @@ st_idle_offl({rr_est_ind, Downlink}, Data) ->
     NewData = replace_data(Data, {downlink, Downlink}),
     {next_state, st_idle, NewData};
 
-% MM CONNECTION ACTIVE
 % An RR connection exists, but no MM procedures are running.
-st_mm_conn_act({bssmap, ?BSSMAP_CLASSMARK_UPD, Args}, Data) ->
+st_idle({dtap_mm, ?GSM48_MT_MM_LOC_UPD_REQUEST, Args}, Data) ->
+    io:format("Permitting LU of ~p by default~n"),
+    {ID_t, ID_value} = proplists:get_value(mobile_id, Args),
+    NewData = replace_data(Data, [{classmark_1, proplists:get_value(classmark_1, Args)},
+				  {ID_t, ID_value}]),
+    send_to_mobile(NewData, {dtap, {dtap_mm,
+				    ?GSM48_MT_MM_LOC_UPD_ACCEPT,
+				    [{lac, {313, 37, 1}}]}}),
+    {next_state, st_idle, NewData};
+st_idle({dtap_mm, ?GSM48_MT_MM_CM_REEST_REQ, Args}, Data) ->
+    send_to_mobile(Data, {dtap, {dtap_mm,
+				 ?GSM48_MT_MM_CM_SERV_REJECT,
+				 [{rej_cause, 2#00100000} % service option not supported, 10.5.3.6
+				  ]}}),
+    {next_state, st_idle, Data};
+st_idle({dtap_mm, ?GSM48_MT_MM_CM_SERV_REQ, Args}, Data) ->
+    NewData = lists:append([{classmark2, proplists:get_value(classmark_2, Args)}],
+			   proplists:delete(classmark_2, Data)),
+    case proplists:get_value(cm_serv_type, Args) of
+	mo_call ->
+	    mobile_cc_fsm:start_link(self()),
+	    send_to_mobile(NewData, {dtap, {dtap_mm,
+					    ?GSM48_MT_MM_CM_SERV_ACCEPT,
+					    []}}),
+	    {next_state, st_mm_conn_act, NewData};
+	sms ->
+	    mobile_sms_fsm:start_link(self()),
+	    send_to_mobile(NewData, {dtap, {dtap_mm,
+					    ?GSM48_MT_MM_CM_SERV_ACCEPT,
+					    []}}),
+	    {next_state, st_mm_conn_act, NewData};
+	_ -> % add USSD state machine call here
+	    send_to_mobile(NewData, {dtap, {dtap_mm,
+					    ?GSm48_MT_MM_CM_SERV_REJECT,
+					    [{rej_cause, 2#00100000} % service option not supported, 10.5.3.6
+					    ]}}),
+	    {next_state, st_idle, NewData}
+    end;
+st_idle({bssmap, ?BSSMAP_CLASSMARK_UPD, Args}, Data) ->
     io:format("Mobile in idle got classmark~n"),
     Cm2 = proplists:get_value(classmark2, Args),
     Cm3 = proplists:get_value(classmark3, Args),
     Dlci = proplists:get_value(dlci, Data),
-    proplists:get_value(downlink, Data) !
-	{sccp_data_out,
-	 proplists:get_value(localref, Data),
-	 proplists:get_value(remoteref, Data),
-	 bssap:encode_message({bssmap, ?BSSMAP_CLASSMARK_UPD, [{mobile_id, imsi}]})
-	 % FIXME transaction probably ought not be 0
-	},
-    {next_state, st_mm_conn_act, [{classmark2, Cm2}, {classmark3, Cm3} | Data]};
-st_mm_conn_act({bssmap, ?BSSMAP_COMPL_L3_INF, Params}, Data) ->
+    send_to_mobile(Data, {bssmap, ?BSSMAP_CLASSMARK_UPD, [{mobile_id, imsi}]}),
+						% FIXME transaction probably ought not be 0
+    {next_state, st_idle, [{classmark2, Cm2}, {classmark3, Cm3} | Data]};
+st_idle({bssmap, ?BSSMAP_COMPL_L3_INF, Params}, Data) ->
     {unparsed, MsgBin} = proplists:get_value(l3_message, Params),
     incoming_0408(self(), MsgBin),
-    {next_state, st_mm_conn_act, Data};
-st_mm_conn_act({bssmap, Type, Params}, Data) ->
+    {next_state, st_idle, Data};
+st_idle({bssmap, Type, Params}, Data) ->
     io:format("Mobile in conn got unk BSSMAP ~p message ~p~n", [Type, Params]),
-    {next_state, st_mm_conn_act, Data};
+    {next_state, st_idle, Data};
+st_idle({Tag, Type, Params}, Data) ->
+    io:format("Mobile in idle got unk ~p:~p message ~p~n", [Tag, Type, Params]),
+    {next_state, st_idle, Data}.
+
+
+% MM CONNECTION ACTIVE
+st_mm_conn_act({dtap_mm, T = ?GSM48_MT_MM_CM_SERV_REQ, Args}, Data) ->
+    % Request for an additional connection.  Follow the same procedure
+    % as in idle state, but don't return to idle state if it fails.
+    {next_state, State, NewData} = st_idle({dtap_mm, T, Args}, Data),
+    {next_state, st_mm_conn_act, NewData}
 st_mm_conn_act({Tag, Type, Params}, Data) ->
     io:format("Mobile in conn got unk ~p:~p message ~p~n", [Tag, Type, Params]),
     {next_state, st_mm_conn_act, Data}.
