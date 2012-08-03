@@ -17,13 +17,14 @@
 
 % state callbacks
 -export([st_idle/2,
-	 st_wait_for_rr/2,
 	 st_mm_conn_act/2,
+	 st_wait_for_rr/2,
 	 st_ident_inited/2,
 	 st_auth_inited/2,
 	 st_tmsi_inited/2,
 	 st_cipher_inited/2,
-	 st_wait_mo_mm/2
+	 st_wait_mo_mm/2,
+	 st_wait_reest/2
 	]).
 
 % This module defines the MSC's model of a mobile station's behavior.
@@ -119,7 +120,8 @@ rr_est_cnf(FsmRef) ->
 % No RR connection exists, and no MM procedures are running.
 st_idle({rr_est_ind, Downlink}, Data) ->
     NewData = lists:append([{downlink, Downlink}], proplists:delete(downlink, Data)),
-    {next_state, mm_conn_act, NewData}.
+    {next_state, st_mm_conn_act, NewData}.
+
 
 % MM CONNECTION ACTIVE
 % An RR connection exists, but no MM procedures are running.
@@ -140,6 +142,19 @@ st_mm_conn_act({bssmap, ?BSSMAP_COMPL_L3_INF, Params}, Data) ->
     {unparsed, MsgBin} = proplists:get_value(l3_message, Params),
     incoming_0408(self(), MsgBin),
     {next_state, st_mm_conn_act, Data};
+% initiate location updating procedure
+% 04.08 sec 4.4.4
+% may want to move this into st_mm_idle
+st_mm_conn_act({dtap_mm, ?GSM48_MT_MM_LOC_UPD_REQUEST, Params}, Data) ->
+    proplists:get_value(downlink, Data) !
+	{sccp_data_out,
+	 proplists:get_value(localref, Data),
+	 proplists:get_value(remoteref, Data),
+	 bssap:encode_message({dtap, {dtap_mm,
+			       ?GSM48_MT_MM_LOC_UPD_ACCEPT,
+			       [{lai, proplists:get_value(lai, Params)}]}})},
+    {next_state, st_mm_conn_act, Data};
+
 st_mm_conn_act({bssmap, Type, Params}, Data) ->
     io:format("Mobile in conn got unk BSSMAP ~p message ~p~n", [Type, Params]),
     {next_state, st_mm_conn_act, Data};

@@ -6,7 +6,7 @@
 -export([parse_message/1, encode_message/1]).
 -compile(export_all).
 
-parse_message(<<Discrim:4, Skip:4, Msg/binary>>) ->
+parse_message(<<Skip:4, Discrim:4, Msg/binary>>) ->
     case Skip of
 	0 ->
 	    parse_message(Discrim, Msg);
@@ -24,6 +24,7 @@ parse_message(Discrim, <<Type:8, Msg/binary>>) ->
     {dtap_unknown, Discrim, Type, Msg}.
 
 encode_message({dtap_mm, Type, Msg}) ->
+    io:format("Encoding MM ~p message ~p~n", [Type, Msg]),
     encode_mm_msg(Type, Msg);
 encode_message({dtap_cc, Type, Msg}) ->
     encode_cc_msg(Type, Msg).
@@ -276,7 +277,11 @@ enc_mm_ie(mand, id_type, D) ->
 enc_mm_ie(mand, T = ?GSM48_IE_MOBILE_ID, D) ->
     enc_ie(T, D);
 enc_mm_ie(opt, T = ?GSM48_IE_MOBILE_ID, D) ->
-    << T:8, (enc_mm_ie(mand, T, D))/bits >>;
+    IE = enc_mm_ie(mand, T, D),
+    case IE of
+	<< >> -> << >>;
+	_ -> << T:8, IE/bits >>
+    end;
 
 enc_mm_ie(mand, T = ?GSM48_IE_LOCATION_AREA, D) ->
     enc_ie(T, D);
@@ -326,7 +331,15 @@ enc_mm_ie(mand, ?GSM48_IE_UTC, D) ->
 
 
 enc_ie(?GSM48_IE_MOBILE_ID, D) ->
-    error;
+    case proplists:is_defined(mobile_id, D) of
+	true -> error;
+	_ -> << >>
+    end;
+
+% 10.5.1.3
 enc_ie(?GSM48_IE_LOCATION_AREA, D) ->
     {MCC, MNC, LAC} = proplists:get_value(lai, D),
-    error.
+    [MCC1, MCC2, MCC3] = lists:map((fun (E) -> E - $0 end), erlang:integer_to_list(MCC)),
+    [MNC1, MNC2|_] = lists:map((fun (E) -> E - $0 end), erlang:integer_to_list(MNC)),
+    MNC3 = 16#f,
+    <<MCC2:4, MCC1:4, MNC3:4, MCC3:4, MNC2:4, MNC1:4, LAC:16/big>>.

@@ -15,8 +15,6 @@
 
 start(_App, _Type) ->
     % code:load_file(ipa_proto),
-    ipa_proto:init(),
-    ipa_proto:start_listen(6666, 1, []),
     spawn(emsc_app, link_state_handler, [init]),
     ok.
 
@@ -24,6 +22,8 @@ stop(_State) ->
     ok.
 
 link_state_handler(init) ->
+    ipa_proto:init(),
+    ipa_proto:start_listen(6666, 1, []),
     link_state_handler().
 
 link_state_handler() ->
@@ -33,8 +33,10 @@ link_state_handler() ->
 	    sccp_machine:boot_link(Socket),
 	    ok;
 	{link_down, _Socket} ->
+	    io:format("IPA link down ~p~n", [_Socket]),
 	    ok;
-	_ ->
+	M ->
+	    io:format("IPA unknown msg ~p~n", [M]),
 	    ok
     end,
     emsc_app:link_state_handler().
