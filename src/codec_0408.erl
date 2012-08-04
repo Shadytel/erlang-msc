@@ -106,10 +106,10 @@ parse_cc_ies(_Expect, _Msg, []) ->
 % This is a 10-octet IE where every bit means something different.
 %
 % 10.5.4.5
-parse_cc_ies([bearer_cap|T], <<Length:8, Bearer:Length/binary, Rest/bits>>, SoFar) ->
-    parse_mm_ies(T, Rest, [{bearer_cap, {unparsed, Bearer}} | SoFar]);
+parse_cc_ies([bearer_cap|T], <<Length:8, Bearer:Length/bytes, Rest/bits>>, SoFar) ->
+    parse_cc_ies(T, Rest, [{bearer_cap, {unparsed, Bearer}} | SoFar]);
 parse_cc_ies([], <<?GSM48_IE_BEARER_CAP:8, Rest/bits>>, SoFar) ->
-    parse_mm_ies([bearer_cap], Rest, SoFar).
+    parse_cc_ies([bearer_cap], Rest, SoFar).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
