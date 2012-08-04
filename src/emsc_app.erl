@@ -23,7 +23,8 @@ stop(_State) ->
 
 link_state_handler(init) ->
     ipa_proto:init(),
-    ipa_proto:start_listen(6666, 1, []),
+    L = ipa_proto:start_listen(6666, 1, []),
+    io:format("Listening at ~p: ~p~n", [self(), L]),
     link_state_handler().
 
 link_state_handler() ->

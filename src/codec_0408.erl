@@ -25,9 +25,9 @@ parse_message(Discrim, <<Type:8, Msg/binary>>) ->
 
 encode_message({dtap_mm, Type, Msg}) ->
     io:format("Encoding MM ~p message ~p~n", [Type, Msg]),
-    encode_mm_msg(Type, Msg);
+    {0, encode_mm_msg(Type, Msg)};
 encode_message({dtap_cc, Type, Msg}) ->
-    encode_cc_msg(Type, Msg).
+    {0, encode_cc_msg(Type, Msg)}.
 
 
 % This file only contains routines to parse messages and elements that

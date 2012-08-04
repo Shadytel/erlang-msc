@@ -318,6 +318,8 @@ sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink) ->
 	    io:format("Sccp ref=~p/~p: Sending a message~n", [LocalRef, RemoteRef]),
 	    Downlink ! {sccp_message_out, LocalRef, RemoteRef, Msg}, % not sure about the tuple member order
 	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
+	{sccp_data_out, LocalRef, RemoteRef, Msg} ->
+	    self() ! {sccp_message, RemoteRef, LocalRef, Msg};
 	{sccp_ping, LocalRef, RemoteRef} ->
 	    Downlink ! {sccp_ping, RemoteRef, LocalRef},
 	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);

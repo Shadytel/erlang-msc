@@ -97,6 +97,8 @@ send_to_mobile(Data, Message) ->
 
 replace_data(Data, {Type, Value}) ->
     [{Type, Value} | proplists:delete(Type, Data)];
+replace_data(Data, []) ->
+    Data;
 replace_data(Data, [{Type, Value}|T]) ->
     replace_data(replace_data(Data, {Type, Value}), T).
 
@@ -156,14 +158,16 @@ st_idle_offl({rr_est_ind, Downlink}, Data) ->
     {next_state, st_idle, NewData}.
 
 % An RR connection exists, but no MM procedures are running.
+st_idle({rr_est_ind, _}, Data) ->
+    {next_state, st_idle, Data};
 st_idle({dtap_mm, ?GSM48_MT_MM_LOC_UPD_REQUEST, Args}, Data) ->
-    io:format("Permitting LU of ~p by default~n"),
+    io:format("Permitting LU of ~p by default~n", [proplists:get_value(mobile_id, Args)]),
     {ID_t, ID_value} = proplists:get_value(mobile_id, Args),
     NewData = replace_data(Data, [{classmark_1, proplists:get_value(classmark_1, Args)},
 				  {ID_t, ID_value}]),
     send_to_mobile(NewData, {dtap, {dtap_mm,
 				    ?GSM48_MT_MM_LOC_UPD_ACCEPT,
-				    [{lac, {313, 37, 1}}]}}),
+				    [{lai, {313, 37, 1}}]}}),
     {next_state, st_idle, NewData};
 st_idle({dtap_mm, ?GSM48_MT_MM_CM_REEST_REQ, Args}, Data) ->
     send_to_mobile(Data, {dtap, {dtap_mm,
@@ -199,7 +203,7 @@ st_idle({bssmap, ?BSSMAP_CLASSMARK_UPD, Args}, Data) ->
     Cm2 = proplists:get_value(classmark2, Args),
     Cm3 = proplists:get_value(classmark3, Args),
     Dlci = proplists:get_value(dlci, Data),
-    send_to_mobile(Data, {bssmap, ?BSSMAP_CLASSMARK_UPD, [{mobile_id, imsi}]}),
+%    send_to_mobile(Data, {bssmap, ?BSSMAP_CLASSMARK_UPD, [{mobile_id, imsi}]}),
 						% FIXME transaction probably ought not be 0
     {next_state, st_idle, [{classmark2, Cm2}, {classmark3, Cm3} | Data]};
 st_idle({bssmap, ?BSSMAP_COMPL_L3_INF, Params}, Data) ->

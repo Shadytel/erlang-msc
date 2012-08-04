@@ -19,7 +19,7 @@ parse_message(<<Type:8, Bin/binary>>) ->
     {bssmap, Type, parse_ies(Bin)}.
 
 encode_message({_Type, _Args}) ->
-    ok.
+    <<>>.
 
 encode_ie(_Type, _Value) ->
     <<>>.

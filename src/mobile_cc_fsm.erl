@@ -31,3 +31,21 @@ init([Downlink]) ->
 st_idle(Foo, Data) ->
     io:format("CC in idle got message ~p~n", [Foo]),
     {ok, st_idle, Data}.
+
+handle_event(_,_,_) ->
+    ok.
+
+handle_sync_event(_,_,_,_) ->
+    ok.
+
+handle_info(_,_,_) ->
+    ok.
+
+terminate(_,_,_) ->
+    ok.
+
+code_change(_,_,_,_) ->
+    ok.
+
+incoming(_,_) ->
+    ok.

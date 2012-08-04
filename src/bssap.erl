@@ -23,8 +23,8 @@ parse_message(<<Discrim:8, Bin/binary>>) ->
     {unknown, Discrim, Bin}.
 
 
-encode_message({bssmap, Msg}) ->
-    MsgBin = bssmap_codec:encode_message(Msg),
+encode_message({bssmap, Type, Msg}) ->
+    MsgBin = bssmap_codec:encode_message({Type, Msg}),
     Len = byte_size(MsgBin),
     <<?SCCP_DISCRIM_BSSMAP:8, Len:8, MsgBin/binary>>;
 
