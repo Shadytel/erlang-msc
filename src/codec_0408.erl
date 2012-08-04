@@ -147,7 +147,7 @@ parse_mm_msg(Type, Msg) ->
 
 encode_mm_msg(Type, Msg) ->
     {Mand, Opt} = message_from_mt_mm(Type),
-    erlang:list_to_binary([<< ?GSM48_PDISC_MM:4, 0:4, Type:8 >>, encode_mm_msg(Type, Mand, Opt, Msg)]).
+    erlang:list_to_binary([<< 0:4, ?GSM48_PDISC_MM:4, Type:8 >>, encode_mm_msg(Type, Mand, Opt, Msg)]).
 
 encode_mm_msg(Type, [], [], Msg) ->
     [];
@@ -202,7 +202,7 @@ parse_mm_ies([?GSM48_IE_MOBILE_ID|T], <<Length:8, Message:Length/bytes, Rest/bit
 parse_mm_ies([classmark_1|T], <<CM1:8/bits, Rest/bits>>, SoFar) ->
     parse_mm_ies(T, Rest, [{classmark_1, common_0408:parse_classmark_1(CM1)} | SoFar]);
 % 10.5.1.6
-parse_mm_ies([classmark_2|T], <<Length:8, CM2:Length/bits, Rest/binary>>, SoFar) ->
+parse_mm_ies([classmark_2|T], <<Length:8, CM2:Length/bytes, Rest/binary>>, SoFar) ->
     parse_mm_ies(T, Rest, [{classmark_2, common_0408:parse_classmark_2(CM2)} | SoFar]);
 % 10.5.1.8
 parse_mm_ies([spare_half|T], <<_Spare:4/bits, Msg/bits>>, SoFar) ->

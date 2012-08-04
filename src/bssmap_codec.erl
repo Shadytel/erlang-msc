@@ -112,7 +112,7 @@ parse_ies([resource_available|T], <<Message:20/bytes, Rest/bytes>>, SoFar) ->
 % 3.2.2.5
 parse_ies([], <<?ELEM_CAUSE:8, Rest/binary>>, SoFar) ->
     parse_ies([cause], Rest, SoFar);
-parse_ies([cause|T], <<Len:8, Message:Len, Rest/bytes>>, SoFar) ->
+parse_ies([cause|T], <<Len:8, Message:Len/bytes, Rest/binary>>, SoFar) ->
     <<Ext:1, Class:3, Value:4>> = Message,
     parse_ies(T, Rest, [{cause, {Class, Value}} | SoFar]);
 

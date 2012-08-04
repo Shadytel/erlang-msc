@@ -44,7 +44,10 @@ connect(Fun) ->
 rx_message(_Socket, _Port, Data, []) ->
     {ok, Msg} = sccp_codec:parse_sccp_msg(Data),
 %    io:format("Got SCCP message~n ->~p~n ->~p~n", [Data, Msg]),
-    whereis(sccp_loop) ! Msg.
+    Pid = whereis(sccp_loop),	
+    if is_pid(Pid) -> Pid ! Msg;
+       true -> io:format("sccp_loop PID not found~n", [])
+    end.
 
 sccp_loop() ->
     receive
@@ -312,14 +315,16 @@ sccp_socket_loop(outgoing, LocalRef, RemoteRef, Downlink, Uplink) ->
 sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink) ->
     receive
 	{sccp_message, LocalRef, _, Msg} ->
+	    io:format("Sccp ref=~p/~p: Got a message:~n~p~n", [LocalRef, RemoteRef, Msg]),
 	    mobile_mm_fsm:incoming(Uplink, Msg),
 	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_message, _, LocalRef, Msg} ->
-	    io:format("Sccp ref=~p/~p: Sending a message~n", [LocalRef, RemoteRef]),
-	    Downlink ! {sccp_message_out, LocalRef, RemoteRef, Msg}, % not sure about the tuple member order
+	    io:format("Sccp ref=~p/~p: Sending a message:~n~p~n", [LocalRef, RemoteRef, Msg]),
+	    Downlink ! {sccp_data_out, LocalRef, RemoteRef, Msg}, % not sure about the tuple member order
 	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_data_out, LocalRef, RemoteRef, Msg} ->
-	    self() ! {sccp_message, RemoteRef, LocalRef, Msg};
+	    self() ! {sccp_message, RemoteRef, LocalRef, Msg},
+	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_ping, LocalRef, RemoteRef} ->
 	    Downlink ! {sccp_ping, RemoteRef, LocalRef},
 	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
