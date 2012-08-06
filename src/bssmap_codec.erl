@@ -9,8 +9,16 @@
 parse_message(<<Type:8, Bin/binary>>) ->
     {bssmap, Type, parse_ies(Bin)}.
 
-encode_message({_Type, _Args}) ->
-    <<>>.
+encode_message({Type, Args}) ->
+    {Mand, Opt} = message_from_mt(Type),
+    erlang:list_to_binary([<< Type:1/bytes >>, encode_message(Type, Mand, Opt, Args)]).
+
+encode_message(Type, [], [], Args) ->
+    << >>;
+encode_message(Type, [], [Cur|Opt], Args) ->
+    [encode_ie(Cur, Args) | encode_message(Type, [], Opt, Args)];
+encode_message(Type, [Cur|Mand], Opt, Args) ->
+    [encode_ie(Cur, Args) | encode_message(Type, Mand, Opt, Args)].
 
 encode_ie(_Type, _Value) ->
     <<>>.
@@ -54,7 +62,73 @@ parse_ies(Bin) ->
 
 
 
-
+message_from_mt(Type) ->
+    case Type of
+	% Type -> {[mandatory], [optional]}
+	?BSSMAP_ASSIGN_REQ -> {[], [?ELEM_L3_HEAD, ?ELEM_PRIORITY, ?ELEM_CKT_ID, ?ELEM_DOWNLINK_DTX, ?ELEM_INTERFER_BAND, ?ELEM_CLASSMARK_IND_2, ?ELEM_GRP_CALL_REF, ?ELEM_TALKER_FLAG, ?ELEM_CONF_EVOL_IND]};
+	?BSSMAP_ASSIGN_COMPL -> {[], [?ELEM_RR_CAUSE, ?ELEM_CKT_ID, ?ELEM_CELL_ID, ?ELEM_CHOSEN_CHAN, ?ELEM_CHOSEN_CRYPTO, ?ELEM_CKT_POOL, ?ELEM_SPEECH_VERSION]};
+	?BSSMAP_ASSIGN_FAIL -> {[?ELEM_CAUSE], [?ELEM_RR_CAUSE, ?ELEM_CKT_POOL, ?ELEM_CKT_POOL_LIST]};
+	?BSSMAP_BLOCK -> {[?ELEM_CKT_ID, ?ELEM_CAUSE], [?ELEM_CONN_REL_REQTED]};
+	?BSSMAP_BLOCK_ACK -> {[?ELEM_CKT_ID], []};
+	?BSSMAP_UNBLOCK -> {[?ELEM_CKT_ID], []};
+	?BSSMAP_UNBLOCK_ACK -> {[?ELEM_CKT_ID], []};
+	?BSSMAP_HAND_REQUE -> {[?ELEM_CHAN_TYPE, ?ELEM_CRYPTO_INFO, ?ELEM_CLASSMARK_IND_2, ?ELEM_CELL_ID], [?ELEM_INTERFER_BAND, ?ELEM_CAUSE, ?ELEM_CLASSMARK_IND_3, ?ELEM_CURRENT_CHAN, ?ELEM_SPEECH_VERSION, ?ELEM_GRP_CALL_REF, ?ELEM_TALKER_FLAG, ?ELEM_CONF_EVOL_IND, ?ELEM_CHOSEN_CRYPTO]};
+	% cell id list is preferred targets; is actually mandatory but
+	% for the expressiveness of my code (response request is
+	% optional; its presence or absence encodes its information).
+	?BSSMAP_HAND_REQUI -> {[?ELEM_CAUSE], [?ELEM_RSP_REQ, ?ELEM_CELL_ID_LIST, ?ELEM_CKT_POOL_LIST, ?ELEM_CURRENT_CHAN, ?ELEM_SPEECH_VERSION, ?ELEM_QUEUE_IND]};
+	?BSSMAP_HAND_REQ_ACK -> {[?ELEM_L3_MESSAGE], [?ELEM_CHOSEN_CHAN, ?ELEM_CHOSEN_CRYPTO, ?ELEM_CKT_POOL, ?ELEM_SPEECH_VERSION, ?ELEM_CKT_ID]};
+	?BSSMAP_HAND_CMD -> {[?ELEM_L3_MESSAGE], [?ELEM_CELL_ID]};
+	?BSSMAP_HAND_COMPL -> {[], [?ELEM_RR_CAUSE]};
+	?BSSMAP_HAND_SUCCEED -> {[], []};
+	?BSSMAP_HAND_CAND_ENQ -> {[?ELEM_MS_COUNT, ?ELEM_CELL_ID_LIST, ?ELEM_CELL_ID], []};
+	?BSSMAP_HAND_CAND_RESP -> {[?ELEM_MS_COUNT, ?ELEM_CELL_ID], []};
+	?BSSMAP_HAND_FAIL -> {[?ELEM_CAUSE], [?ELEM_RR_CAUSE, ?ELEM_CKT_POOL, ?ELEM_CKT_POOL_LIST]};
+	?BSSMAP_RSRC_REQ -> {[?ELEM_PERIODICITY, ?ELEM_RSRC_IND_METH, ?ELEM_CELL_ID], [?ELEM_EXT_RSRC_INDn]};
+	% cell id is actually mandatory but for the expressiveness of
+	% my code (resource available is not sent in all cases; its
+	% presence or absence encodes its information).
+	?BSSMAP_RSRC_IND -> {[?ELEM_RSRC_IND_METH], [?ELEM_RSRC_AVAIL, ?ELEM_CELL_ID, ?ELEM_TOTAL_AVAIL]};
+	% cell id list is mandatory; tmsi is optional.
+	?BSSMAP_PAGING -> {[?ELEM_IMSI], [?ELEM_TMSI, ?ELEM_CELL_ID_LIST, ?ELEM_CHAN_NEEDED, ?ELEM_EMLPP_PRIO]};
+	?BSSMAP_CLR_REQ -> {[?ELEM_CAUSE], []};
+	% cause is mandatory, l3 header is optional and deprecated
+	?BSSMAP_CLR_CMD -> {[], [?ELEM_L3_HEAD, ?ELEM_CAUSE]};
+	?BSSMAP_CLR_COMPL -> {[], []};
+	?BSSMAP_RESET -> {[?ELEM_CAUSE], []};
+	?BSSMAP_RESET_ACK -> {[], []};
+	?BSSMAP_HAND_PERF -> {[?ELEM_CAUSE, ?ELEM_CELL_ID], [?ELEM_CHOSEN_CHAN, ?ELEM_CHOSEN_CRYPTO, ?ELEM_SPEECH_VERSION]};
+	?BSSMAP_OVERLOAD -> {[?ELEM_CAUSE, ?ELEM_CELL_ID], []};
+	% trace ref is mandatory
+	?BSSMAP_MSC_INV_TRACE -> {[?ELEM_TRACE_TYPE], [?ELEM_TRIGGER_ID, ?ELEM_TRACE_REF, ?ELEM_TRANS_ID, ?ELEM_MOBILE_ID, ?ELEM_OMC_ID]};
+	% trace ref is mandatory
+	?BSSMAP_BSS_INV_TRACE -> {[?ELEM_TRACE_TYPE], [?ELEM_FORWARD_IND, ?ELEM_TRIGGER_ID, ?ELEM_TRACE_REF, ?ELEM_TRANS_ID, ?ELEM_OMC_ID]};
+	?BSSMAP_CLASSMARK_UPD -> {[?ELEM_CLASSMARK_2], [?ELEM_CLASSMARK_3]};
+	% crypto info is mandatory; l3 head is optional and deprecated
+	?BSSMAP_CIPHER_CMD -> {[], [?ELEM_L3_HEAD, ?ELEM_CRYPTO_INFO, ?ELEM_CIPHER_RSP_MODE]};
+	?BSSMAP_CIPHER_COMPL -> {[], [?ELEM_L3_MESSAGE, ?ELEM_CHOSEN_CRYPTO]};
+	?BSSMAP_COMPL_L3_INF -> {[?ELEM_CELL_ID, ?ELEM_L3_INFO], [?ELEM_CHOSEN_CHAN]};
+	?BSSMAP_QUEUE_IND -> {[], []};
+	?BSSMAP_SAPI_REJ -> {[?ELEM_DLCI, ?ELEM_CAUSE], []};
+	?BSSMAP_HAND_REQ_REJ -> {[?ELEM_CAUSE], []};
+	?BSSMAP_RESET_CKT -> {[?ELEM_CKT_ID, ?ELEM_CAUSE], []};
+	?BSSMAP_RESET_CKT_ACK -> {[?ELEM_CKT_ID], []};
+	?BSSMAP_HAND_DETECT -> {[], []};
+	?BSSMAP_CGRP_BLOCK -> {[?ELEM_CAUSE, ?ELEM_CKT_ID, ?ELEM_CKT_ID_LIST], []};
+	?BSSMAP_CGRP_BLOCK_ACK -> {[?ELEM_CKT_ID, ?ELEM_CKT_ID_LIST], []};
+	?BSSMAP_CGRP_UNBLOCK -> {[?ELEM_CKT_ID, ?ELEM_CKT_ID_LIST], []};
+	?BSSMAP_CGRP_UNBLOCK_ACK -> {[?ELEM_CKT_ID, ?ELEM_CKT_ID_LIST], []};
+	?BSSMAP_CONFUSION -> {[?ELEM_CAUSE, ?ELEM_DIAG], []};
+	?BSSMAP_CLASSMARK_REQ -> {[], []};
+	?BSSMAP_CIPHER_MODE_REJ -> {[?ELEM_CAUSE], []};
+	?BSSMAP_LOAD_IND -> {[?ELEM_TIME_IND, ?ELEM_CELL_ID, ?ELEM_CELL_ID_LIST], [?ELEM_SRSC_SITUATION, ?ELEM_CAUSE]};
+	% [ ... omit VBS / VGCS messages ... ]
+	?BSSMAP_SUSPEND -> {[?ELEM_DLCI], []};
+	?BSSMAP_RESUME -> {[?ELEM_DLCI], []};
+	?BSSMAP_CHANGE_CKT -> {[?ELEM_CAUSE], []};
+	?BSSMAP_CHANGE_CKT_ACK -> {[?ELEM_CKT_ID], []};
+	_ -> {[], []}
+    end.
 
 
 parse_ies(_, <<>>, SoFar) ->
