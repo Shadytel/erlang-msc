@@ -6,15 +6,6 @@
 
 -compile(export_all).
 
-% TODO turn this all into using of proplists instead of structures
-
-%parse_bssmap(?BSSMAP_ASSIGN_REQ, DataBin) ->
-%    {ok, ChanLen, ChanType} = parse_el_channeltype(DataBin),
-%    {ok, L3Len, L3Head} = parse_el_l3head(binary:part(DataBin, ChanLen, 4)),
-%    {ok, PrioLen, Priority} = parse_el_priority(binary:part(DataBin, ChanLen+L3Len, 3)),
-%    {ok, CICLen, CIC} = parse_el_cic(binary:part(DataBin, ChanLen+L3Len+PrioLen, 3)),
-%    {ok, 
-
 parse_message(<<Type:8, Bin/binary>>) ->
     {bssmap, Type, parse_ies(Bin)}.
 
