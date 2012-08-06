@@ -20,6 +20,124 @@ encode_message(Type, [], [Cur|Opt], Args) ->
 encode_message(Type, [Cur|Mand], Opt, Args) ->
     [encode_ie(Cur, Args) | encode_message(Type, Mand, Opt, Args)].
 
+encode_ie(T = ?ELEM_CKT_ID, Args) ->
+    D = proplists:get_value(ckt_id, Args),
+    Multiplex = proplists:get_value(pcm, D),
+    Slot = proplists:get_value(timeslot, D),
+    <<T:8, Multiplex:11, Slot:5>>;
+encode_ie(T = ?ELEM_CONN_REL_REQTED, Args) ->
+    case proplists:is_defined(release_requested, Args) of
+	true -> << T:8 >>;
+	_ -> << >>
+    end;
+encode_ie(T = ?ELEM_RSRC_AVAIL, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CAUSE, Args) ->
+    case proplists:is_defined(cause, Args) of
+	true ->
+	    {Class, Value} = proplists:get_value(cause, Args),
+	    Ext = 0,
+	    <<T:8, Ext:1, Class:3, Value:4>>;
+	_ -> << >>
+    end;
+encode_ie(T = ?ELEM_CELL_ID, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_PRIORITY, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_L3_HEAD, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_IMSI, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_TMSI, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CRYPTO_INFO, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CHAN_TYPE, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_PERIODICITY, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_EXT_RSRC_IND, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_MS_COUNT, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CLASSMARK_IND_2, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CLASSMARK_IND_3, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_INTERFER_BAND, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_RR_CAUSE, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_L3_MESSAGE, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_DLCI, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_DOWNLINK_DTX, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CELL_ID_LIST, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_RSP_REQ, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_RSRC_IND_METH, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CLASSMARK_IND_1, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CKT_ID_LIST, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_DIAG, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_L3_BODY, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CHOSEN_CHAN, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_TOTAL_AVAIL, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CIPHER_RSP_MODE, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CHAN_NEEDED, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_TRACE_TYPE, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_TRIGGER_ID, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_TRACE_REF, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_TRANS_ID, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_MOBILE_ID, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_OMC_ID, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_FORWARD_IND, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CHOSEN_CRYPTO, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CKT_POOL, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CKT_POOL_LIST, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_TIME_IND, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_RSRC_SITUATION, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CURRENT_CHAN, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_QUEUE_IND, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_SPEECH_VERSION, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_ASSIGN_REQMT, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_TALKER_FLAG, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CONN_REL_REQTED, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_GRP_CALL_REF, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_EMLPP_PRIO, Args) ->
+    << >>;
+encode_ie(T = ?ELEM_CONF_EVOL_IND, Args) ->
+    << >>;
 encode_ie(_Type, _Value) ->
     <<>>.
 
