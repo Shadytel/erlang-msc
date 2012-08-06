@@ -44,9 +44,15 @@ connect(Fun) ->
 rx_message(_Socket, _Port, Data, []) ->
     {ok, Msg} = sccp_codec:parse_sccp_msg(Data),
 %    io:format("Got SCCP message~n ->~p~n ->~p~n", [Data, Msg]),
-    Pid = whereis(sccp_loop),	
+    Pid = whereis(sccp_loop),
     if is_pid(Pid) -> Pid ! Msg;
        true -> io:format("sccp_loop PID not found~n", [])
+    end.
+
+page(IMSI) ->
+    Pid = whereis(sccp_loop),
+    if is_pid(Pid) -> Pid ! {page, IMSI};
+       true -> io:format("sccp_loop PID not found for paging~n", [])
     end.
 
 sccp_loop() ->
@@ -68,6 +74,9 @@ sccp_loop(Socket) ->
 	    io:format("Registering datagram handler ~p for SCCP~n", [Fun]),
 	    put(dgram_callback, Fun),
     	    sccp_machine:sccp_loop(Socket);
+
+	% TODO: handle {page, IMSI}
+
 	{connect, Fun} ->
 	    io:format("SCCP connecting using handler ~p~n", [Fun]),
 	    Self = self(),
