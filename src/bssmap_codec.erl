@@ -23,9 +23,6 @@ encode_message(Type, [Cur|Mand], Opt, Args) ->
 encode_ie(_Type, _Value) ->
     <<>>.
 
-parse_ies(Bin) ->
-    parse_ies([], Bin, []).
-
 %% [{?BSSMAP_ASSIGN_REQ, assign_req},
 %%  {?BSSMAP_ASSIGN_COMPL, assign_compl},
 %%  {?BSSMAP_ASSIGN_FAIL, assign_fail},
@@ -82,9 +79,9 @@ message_from_mt(Type) ->
 	?BSSMAP_HAND_COMPL -> {[], [?ELEM_RR_CAUSE]};
 	?BSSMAP_HAND_SUCCEED -> {[], []};
 	?BSSMAP_HAND_CAND_ENQ -> {[?ELEM_MS_COUNT, ?ELEM_CELL_ID_LIST, ?ELEM_CELL_ID], []};
-	?BSSMAP_HAND_CAND_RESP -> {[?ELEM_MS_COUNT, ?ELEM_CELL_ID], []};
+	?BSSMAP_HAND_CAND_RSP -> {[?ELEM_MS_COUNT, ?ELEM_CELL_ID], []};
 	?BSSMAP_HAND_FAIL -> {[?ELEM_CAUSE], [?ELEM_RR_CAUSE, ?ELEM_CKT_POOL, ?ELEM_CKT_POOL_LIST]};
-	?BSSMAP_RSRC_REQ -> {[?ELEM_PERIODICITY, ?ELEM_RSRC_IND_METH, ?ELEM_CELL_ID], [?ELEM_EXT_RSRC_INDn]};
+	?BSSMAP_RSRC_REQ -> {[?ELEM_PERIODICITY, ?ELEM_RSRC_IND_METH, ?ELEM_CELL_ID], [?ELEM_EXT_RSRC_IND]};
 	% cell id is actually mandatory but for the expressiveness of
 	% my code (resource available is not sent in all cases; its
 	% presence or absence encodes its information).
@@ -103,12 +100,12 @@ message_from_mt(Type) ->
 	?BSSMAP_MSC_INV_TRACE -> {[?ELEM_TRACE_TYPE], [?ELEM_TRIGGER_ID, ?ELEM_TRACE_REF, ?ELEM_TRANS_ID, ?ELEM_MOBILE_ID, ?ELEM_OMC_ID]};
 	% trace ref is mandatory
 	?BSSMAP_BSS_INV_TRACE -> {[?ELEM_TRACE_TYPE], [?ELEM_FORWARD_IND, ?ELEM_TRIGGER_ID, ?ELEM_TRACE_REF, ?ELEM_TRANS_ID, ?ELEM_OMC_ID]};
-	?BSSMAP_CLASSMARK_UPD -> {[?ELEM_CLASSMARK_2], [?ELEM_CLASSMARK_3]};
+	?BSSMAP_CLASSMARK_UPD -> {[?ELEM_CLASSMARK_IND_2], [?ELEM_CLASSMARK_IND_3]};
 	% crypto info is mandatory; l3 head is optional and deprecated
 	?BSSMAP_CIPHER_CMD -> {[], [?ELEM_L3_HEAD, ?ELEM_CRYPTO_INFO, ?ELEM_CIPHER_RSP_MODE]};
 	?BSSMAP_CIPHER_COMPL -> {[], [?ELEM_L3_MESSAGE, ?ELEM_CHOSEN_CRYPTO]};
-	?BSSMAP_COMPL_L3_INF -> {[?ELEM_CELL_ID, ?ELEM_L3_INFO], [?ELEM_CHOSEN_CHAN]};
-	?BSSMAP_QUEUE_IND -> {[], []};
+	?BSSMAP_COMPL_L3_INF -> {[?ELEM_CELL_ID, ?ELEM_L3_MESSAGE], [?ELEM_CHOSEN_CHAN]};
+	?BSSMAP_QUEUEING_IND -> {[], []};
 	?BSSMAP_SAPI_REJ -> {[?ELEM_DLCI, ?ELEM_CAUSE], []};
 	?BSSMAP_HAND_REQ_REJ -> {[?ELEM_CAUSE], []};
 	?BSSMAP_RESET_CKT -> {[?ELEM_CKT_ID, ?ELEM_CAUSE], []};
@@ -121,7 +118,7 @@ message_from_mt(Type) ->
 	?BSSMAP_CONFUSION -> {[?ELEM_CAUSE, ?ELEM_DIAG], []};
 	?BSSMAP_CLASSMARK_REQ -> {[], []};
 	?BSSMAP_CIPHER_MODE_REJ -> {[?ELEM_CAUSE], []};
-	?BSSMAP_LOAD_IND -> {[?ELEM_TIME_IND, ?ELEM_CELL_ID, ?ELEM_CELL_ID_LIST], [?ELEM_SRSC_SITUATION, ?ELEM_CAUSE]};
+	?BSSMAP_LOAD_IND -> {[?ELEM_TIME_IND, ?ELEM_CELL_ID, ?ELEM_CELL_ID_LIST], [?ELEM_RSRC_SITUATION, ?ELEM_CAUSE]};
 	% [ ... omit VBS / VGCS messages ... ]
 	?BSSMAP_SUSPEND -> {[?ELEM_DLCI], []};
 	?BSSMAP_RESUME -> {[?ELEM_DLCI], []};
@@ -130,6 +127,10 @@ message_from_mt(Type) ->
 	_ -> {[], []}
     end.
 
+
+
+parse_ies(Bin) ->
+    parse_ies([], Bin, []).
 
 parse_ies(_, <<>>, SoFar) ->
     SoFar;
@@ -322,7 +323,7 @@ parse_ies([classmark_1|T], <<Classmark:1/bytes, Rest/binary>>, SoFar) ->
     parse_ies(T, Rest, [{classmark_1, Classmark} | SoFar]);
 
 % 3.2.2.31
-parse_ies([], <<?ELEM_CIC_LIST:8, Rest/binary>>, SoFar) ->
+parse_ies([], <<?ELEM_CKT_ID_LIST:8, Rest/binary>>, SoFar) ->
     parse_ies([ckt_id_list], Rest, SoFar);
 parse_ies([ckt_id_list|T], <<Len:8, Body:Len/bytes, Rest/binary>>, SoFar) ->
     <<Range:8, Status/bits>> = Body,
