@@ -63,7 +63,7 @@ init([LocalRef, RemoteRef, Sender]) ->
 %    io:format("Mobile got ~p while in ~p~n", [Event, StateName]),
 %    {next_state, StateName, Data}.
 
-handle_event(Event, StateName, Data) ->
+handle_event(Event, State, Data) ->
     case Event of
 	{kill, Cause} ->
 	    {stop, {cause, Cause}, Data};
@@ -71,9 +71,27 @@ handle_event(Event, StateName, Data) ->
 	    {next_state, st_idle, [{downlink, Downlink}]};
 	{rr_rel_ind} ->
 	    {next_state, st_idle, Data};
+	{bssmap, Type, Args} ->
+	    io:format("BSSMAP message ~p: ~p~n", [Type, Args]),
+	    {NewState, NewData} = handle_bssmap({bssmap, Type, Args}, Data, State),
+	    {next_state, NewState, NewData};
 	_ ->
-	    {reply, {error, invalid_all_state_event}, StateName, Data}
+	    {reply, {error, invalid_all_state_event}, State, Data}
     end.
+
+handle_bssmap({bssmap, ?BSSMAP_COMPL_L3_INF, Params}, Data, State) ->
+    {unparsed, MsgBin} = proplists:get_value(l3_message, Params),
+    incoming_0408(self(), MsgBin),
+    {State, Data};
+handle_bssmap({bssmap, ?BSSMAP_CLASSMARK_UPD, Args}, Data, State) ->
+    io:format("Mobile in idle got classmark~n"),
+    Cm2 = proplists:get_value(classmark2, Args),
+    Cm3 = proplists:get_value(classmark3, Args),
+    Dlci = proplists:get_value(dlci, Data),
+%    send_to_mobile(Data, {bssmap, ?BSSMAP_CLASSMARK_UPD, [{mobile_id, imsi}]}),
+						% FIXME transaction probably ought not be 0
+    {State, [{classmark2, Cm2}, {classmark3, Cm3} | Data]}.
+
 
 handle_sync_event(_Event, _From, StateName, Data) ->
     {next_state, StateName, Data}.
@@ -108,7 +126,11 @@ replace_data(Data, [{Type, Value}|T]) ->
 
 % Accept a message from the mobile station
 incoming(FsmRef, Message) ->
-    gen_fsm:send_event(FsmRef, bssap:parse_message(Message)).
+    {Disc, Type, Args} = bssap:parse_message(Message),
+    case Disc of
+	bssmap -> gen_fsm:send_all_state_event(FsmRef, {Disc, Type, Args});
+	_      -> gen_fsm:send_event(FsmRef, {Disc, Type, Args})
+    end.
 % function used internally only, put here for consistency
 incoming_0408(FsmRef, Message) ->
     gen_fsm:send_event(FsmRef, codec_0408:parse_message(Message)).
@@ -198,21 +220,6 @@ st_idle({dtap_mm, ?GSM48_MT_MM_CM_SERV_REQ, Args}, Data) ->
 					    ]}}),
 	    {next_state, st_idle, NewData}
     end;
-st_idle({bssmap, ?BSSMAP_CLASSMARK_UPD, Args}, Data) ->
-    io:format("Mobile in idle got classmark~n"),
-    Cm2 = proplists:get_value(classmark2, Args),
-    Cm3 = proplists:get_value(classmark3, Args),
-    Dlci = proplists:get_value(dlci, Data),
-%    send_to_mobile(Data, {bssmap, ?BSSMAP_CLASSMARK_UPD, [{mobile_id, imsi}]}),
-						% FIXME transaction probably ought not be 0
-    {next_state, st_idle, [{classmark2, Cm2}, {classmark3, Cm3} | Data]};
-st_idle({bssmap, ?BSSMAP_COMPL_L3_INF, Params}, Data) ->
-    {unparsed, MsgBin} = proplists:get_value(l3_message, Params),
-    incoming_0408(self(), MsgBin),
-    {next_state, st_idle, Data};
-st_idle({bssmap, Type, Params}, Data) ->
-    io:format("Mobile in conn got unk BSSMAP ~p message ~p~n", [Type, Params]),
-    {next_state, st_idle, Data};
 st_idle({Tag, Type, Params}, Data) ->
     io:format("Mobile in idle got unk ~p:~p message ~p~n", [Tag, Type, Params]),
     {next_state, st_idle, Data}.
