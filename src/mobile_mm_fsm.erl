@@ -335,6 +335,7 @@ location_updating(tmsi, Tmsi, Args, Data) ->
 					 [{lai, {313, 370, 1}},
 					  {rej_cause, 2#00000100} % imsi unknown in vlr
 					 ] }}),
+	    send_to_mobile(Data, {bssmap, ?BSSMAP_CLR_CMD, [{cause, {0, 2#1001}}]}),
 	    {next_state, st_idle, Data};
 	_ ->
 	    send_to_mobile(Data, {dtap, {dtap_mm,
