@@ -106,9 +106,9 @@ parse_cc_ies(_Expect, _Msg, []) ->
 % This is a 10-octet IE where every bit means something different.
 %
 % 10.5.4.5
-parse_cc_ies([bearer_cap|T], <<Length:8, Bearer:Length/bytes, Rest/bits>>, SoFar) ->
+parse_cc_ies([bearer_cap|T], <<Length:8, Bearer:Length/bytes, Rest/bytes>>, SoFar) ->
     parse_cc_ies(T, Rest, [{bearer_cap, {unparsed, Bearer}} | SoFar]);
-parse_cc_ies([], <<?GSM48_IE_BEARER_CAP:8, Rest/bits>>, SoFar) ->
+parse_cc_ies([], <<?GSM48_IE_BEARER_CAP:8, Rest/bytes>>, SoFar) ->
     parse_cc_ies([bearer_cap], Rest, SoFar).
 
 
@@ -187,7 +187,7 @@ parse_mm_ies([cm_serv_type|T], <<TypeInt:4, Rest/bits>>, SoFar) ->
 % 10.5.1.3
 parse_mm_ies([], <<?GSM48_IE_LOCATION_AREA:8, Rest/binary>>, SoFar) ->
     parse_mm_ies([lai], Rest, SoFar);
-parse_mm_ies([?GSM48_IE_LOCATION_AREA|T], <<MCC2:4, MCC1:4, MNC3:4, MCC3:4, MNC2:4, MNC1:4, LAC:16/big, Rest/bits>>, SoFar) ->
+parse_mm_ies([?GSM48_IE_LOCATION_AREA|T], <<MCC2:4, MCC1:4, MNC3:4, MCC3:4, MNC2:4, MNC1:4, LAC:16/big, Rest/bytes>>, SoFar) ->
     MCC = MCC3 + MCC2*10 + MCC1*100,
     MNC = if (MNC3 == 2#1111) -> MNC2 + MNC1*10;
        true -> MNC2 + MNC1*10 + MNC3*100 end,
@@ -195,11 +195,11 @@ parse_mm_ies([?GSM48_IE_LOCATION_AREA|T], <<MCC2:4, MCC1:4, MNC3:4, MCC3:4, MNC2
 % 10.5.1.4
 parse_mm_ies([], <<?GSM48_IE_MOBILE_ID:8, Rest/binary>>, SoFar) ->
     parse_mm_ies([?GSM48_IE_MOBILE_ID], Rest, SoFar);
-parse_mm_ies([?GSM48_IE_MOBILE_ID|T], <<Length:8, Message:Length/bytes, Rest/bits>>, SoFar) ->
+parse_mm_ies([?GSM48_IE_MOBILE_ID|T], <<Length:8, Message:Length/bytes, Rest/bytes>>, SoFar) ->
     Ident = common_0408:parse_mobile_id(Message),
     parse_mm_ies(T, Rest, [{mobile_id, Ident} | SoFar]);
 % 10.5.1.5
-parse_mm_ies([classmark_1|T], <<CM1:8/bits, Rest/bits>>, SoFar) ->
+parse_mm_ies([classmark_1|T], <<CM1:8/bits, Rest/bytes>>, SoFar) ->
     parse_mm_ies(T, Rest, [{classmark_1, common_0408:parse_classmark_1(CM1)} | SoFar]);
 % 10.5.1.6
 parse_mm_ies([classmark_2|T], <<Length:8, CM2:Length/bytes, Rest/binary>>, SoFar) ->
@@ -217,7 +217,7 @@ parse_mm_ies([loc_upd_type|T], <<Follow:1, _:1, TypeBin:2, Rest/bits>>, SoFar) -
            end,
     parse_mm_ies(T, Rest, [{loc_upd_type, [{type, Type}, {follow_on, Follow}]} | SoFar]);
 % 10.5.3.6
-parse_mm_ies([rej_cause|T], <<Cause:8, Rest/bits>>, SoFar) ->
+parse_mm_ies([rej_cause|T], <<Cause:8, Rest/bytes>>, SoFar) ->
     parse_mm_ies(T, Rest, [{rej_cause, Cause} | SoFar]);
 % 10.5.4.12
 parse_mm_ies([cong_lev|T], <<Cong:4, Rest/bits>>, SoFar) ->
@@ -228,24 +228,24 @@ parse_mm_ies([cong_lev|T], <<Cong:4, Rest/bits>>, SoFar) ->
 	    parse_mm_ies(T, Rest, [{congestion, not_ready} | SoFar])
     end;
 % 10.5.4.11
-parse_mm_ies([?GSM48_IE_CAUSE|T], <<Length:8, Cause:Length/binary, Rest/bits>>, SoFar) ->
+parse_mm_ies([?GSM48_IE_CAUSE|T], <<Length:8, Cause:Length/binary, Rest/bytes>>, SoFar) ->
     parse_mm_ies(T, Rest, [{cause, {unparsed, Cause}} | SoFar]);
-parse_mm_ies([], <<?GSM48_IE_CAUSE:8, Msg/bits>>, SoFar) ->
+parse_mm_ies([], <<?GSM48_IE_CAUSE:8, Msg/bytes>>, SoFar) ->
     parse_mm_ies([?GSM48_IE_CAUSE], Msg, SoFar);
 % 10.5.4.15
-parse_mm_ies([?GSM48_IE_FACILITY|T], <<Length:8, Facility:Length/binary, Rest/bits>>, SoFar) ->
+parse_mm_ies([?GSM48_IE_FACILITY|T], <<Length:8, Facility:Length/binary, Rest/bytes>>, SoFar) ->
     parse_mm_ies(T, Rest, [{facility, {unparsed, Facility}} | SoFar]);
-parse_mm_ies([], <<?GSM48_IE_FACILITY:8, Msg/bits>>, SoFar) ->
+parse_mm_ies([], <<?GSM48_IE_FACILITY:8, Msg/bytes>>, SoFar) ->
     parse_mm_ies([?GSM48_IE_FACILITY], Msg, SoFar);
 % 10.5.4.17
-parse_mm_ies([?GSM48_IE_KPD_FACILITY|T], <<Char:8, Rest/bits>>, SoFar) ->
+parse_mm_ies([?GSM48_IE_KPD_FACILITY|T], <<Char:8, Rest/bytes>>, SoFar) ->
     parse_mm_ies(T, Rest, [{keypad, Char} | SoFar]);
-parse_mm_ies([], <<?GSM48_IE_KPD_FACILITY:8, Msg/bits>>, SoFar) ->
+parse_mm_ies([], <<?GSM48_IE_KPD_FACILITY:8, Msg/bytes>>, SoFar) ->
     parse_mm_ies([?GSM48_IE_KPD_FACILITY], Msg, SoFar);
 % 10.5.4.25
-parse_mm_ies([?GSM48_IE_USER_USER|T], <<Length:8, Data:Length/binary, Rest/bits>>, SoFar) ->
+parse_mm_ies([?GSM48_IE_USER_USER|T], <<Length:8, Data:Length/binary, Rest/bytes>>, SoFar) ->
     parse_mm_ies(T, Rest, [{user_user, {unparsed, Data}}|SoFar]);
-parse_mm_ies([], <<?GSM48_IE_USER_USER:8, Msg/bits>>, SoFar) ->
+parse_mm_ies([], <<?GSM48_IE_USER_USER:8, Msg/bytes>>, SoFar) ->
     parse_mm_ies([?GSM48_IE_USER_USER], Msg, SoFar).
 
 % need to encode:
@@ -261,7 +261,7 @@ parse_mm_ies([], <<?GSM48_IE_USER_USER:8, Msg/bits>>, SoFar) ->
 % IE_UTC		10.5.3.8 
 % IE_NET_TIME_TZ	10.5.3.9 
 
-% (mand/opt, type, data) -> <<IE>>/bits with type-tag if necessary
+% (mand/opt, type, data) -> <<IE>>/bytes with type-tag if necessary
 enc_mm_ie(mand, spare_half, D) ->
     << 0:4 >>;
 
@@ -292,14 +292,14 @@ enc_mm_ie(opt, T = ?GSM48_IE_MOBILE_ID, D) ->
     IE = enc_mm_ie(mand, T, D),
     case IE of
 	<< >> -> << >>;
-	_ -> << T:8, IE/bits >>
+	_ -> << T:8, IE/bytes >>
     end;
 
 enc_mm_ie(mand, T = ?GSM48_IE_LOCATION_AREA, D) ->
     enc_ie(T, D);
 enc_mm_ie(opt, T = ?GSM48_IE_LOCATION_AREA, D) ->
     case proplists:is_defined(lai, D) of
-	true -> << T:8, (enc_mm_ie(mand, T, D))/bits >>;
+	true -> << T:8, (enc_mm_ie(mand, T, D))/bytes >>;
 	_ -> << >>
     end;
 
