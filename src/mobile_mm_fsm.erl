@@ -112,6 +112,9 @@ code_change(Old, StateName, Data, Extra) ->
     {ok, StateName, Data}.
 
 
+%% ============================================================
+%% internal functions
+
 send_to_mobile(Data, Message) ->
     proplists:get_value(downlink, Data) !
 	{sccp_data_out,
@@ -125,6 +128,21 @@ replace_data(Data, []) ->
     Data;
 replace_data(Data, [{Type, Value}|T]) ->
     replace_data(replace_data(Data, {Type, Value}), T).
+
+reg_in_vlr(Data) ->
+    Imsi = proplists:get_value(imsi, Data),
+    T = vlr_server:find_tmsi(Imsi),
+    if  T == undefined -> TMSI = vlr_server:add_station(Imsi);
+	true -> TMSI = T
+    end,
+    vlr_server:put(TMSI, mm_fsm, self()),
+    TMSI.
+
+% figure out if I need to subsume myself into some other MM finite
+% state machine, and do so
+mind_meld(Data) ->
+    Imsi = proplists:get_value(imsi, Data),
+    ok.
 
 
 %% ============================================================
@@ -191,12 +209,9 @@ st_idle({rr_est_ind, _}, Data) ->
 st_idle({dtap_mm, ?GSM48_MT_MM_LOC_UPD_REQUEST, Args}, Data) ->
     io:format("Permitting LU of ~p by default~n", [proplists:get_value(mobile_id, Args)]),
     {ID_t, ID_value} = proplists:get_value(mobile_id, Args),
-    NewData = replace_data(Data, [{classmark_1, proplists:get_value(classmark_1, Args)},
-				  {ID_t, ID_value}]),
-    send_to_mobile(NewData, {dtap, {dtap_mm,
-				    ?GSM48_MT_MM_LOC_UPD_ACCEPT,
-				    [{lai, {313, 37, 1}}]}}),
-    {next_state, st_idle, NewData};
+    NewData = replace_data(Data, [{classmark_1, proplists:get_value(classmark_1, Args)}]),
+    location_updating(ID_t, ID_value, Args, NewData);
+
 st_idle({dtap_mm, ?GSM48_MT_MM_CM_REEST_REQ, Args}, Data) ->
     send_to_mobile(Data, {dtap, {dtap_mm,
 				 ?GSM48_MT_MM_CM_SERV_REJ,
@@ -278,3 +293,36 @@ st_wait_mo_mm(Event, Data) ->
 % WAIT FOR REESTABLISHMENT
 st_wait_reest(Event, Data) ->
 	{next_state, st_wait_reest, Data}.
+
+
+% Location updating procedure
+location_updating(imsi, Imsi, Args, Data) ->
+    T = vlr_server:find_tmsi(Imsi),
+    case T of
+	{error, no_such_tmsi} -> Tmsi = vlr_server:add_station(Imsi);
+	_ -> Tmsi = T
+    end,
+    NewData = replace_data(Data, [{classmark_1, proplists:get_value(classmark_1, Args)},
+				  {imsi, Imsi},
+				  {tmsi, Tmsi}]),
+    send_to_mobile(NewData, {dtap, {dtap_mm,
+				    ?GSM48_MT_MM_LOC_UPD_ACCEPT,
+				    [{lai, proplists:get_value(lai, Args)},
+				     {mobile_id, {tmsi, Tmsi}}]}});
+location_updating(tmsi, Tmsi, Args, Data) ->
+    Proc = vlr_server:get(Tmsi, imsi),
+    case Proc of
+	{error, no_such_tmsi} ->
+	    send_to_mobile(Data, {dtap, {dtap_mm,
+					 ?GSM48_MT_MM_LOC_UPD_REJECT,
+					 [{lai, {313, 370, 1}},
+					  {rej_cause, 2#00000100} % imsi unknown in vlr
+					 ] }}),
+	    {next_state, st_idle, Data};
+	_ ->
+	    send_to_mobile(Data, {dtap, {dtap_mm,
+					 ?GSM48_MT_MM_LOC_UPD_ACCEPT,
+					 [{lai, proplists:get_value(lai, Args)}] }}),
+	    {next_state, st_idle, Data}
+    end.
+
