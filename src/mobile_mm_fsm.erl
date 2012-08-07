@@ -98,6 +98,10 @@ handle_bssmap({bssmap, ?BSSMAP_CLR_REQ, Args}, Data, State) ->
     {State, Data};
 handle_bssmap({bssmap, ?BSSMAP_CLR_COMPL, Args}, Data, State) ->
     io:format("Mobile cleared~n"),
+    proplists:get_value(downlink, Data) ! {sccp_released,
+					   proplists:get_value(localref, Data),
+					   proplists:get_value(remoteref, Data),
+					   0},
     {st_idle, Data};
 handle_bssmap({bssmap, Type, Args}, Data, State) ->
     io:format("Mobile in ~p got unknown BSSMAP ~p: ~p~n", [State, Type, Args]),
@@ -139,7 +143,7 @@ reg_in_vlr(Data) ->
     T = vlr_server:find_tmsi(Imsi),
     if  (T == undefined) ; (T == {error, no_such_imsi}) ->
 	    TMSI = vlr_server:add_station(Imsi);
-	true -> TMSI = T
+	true -> {ok, TMSI} = T
     end,
     vlr_server:put(TMSI, mm_fsm, self()),
     TMSI.
@@ -306,7 +310,7 @@ location_updating(imsi, Imsi, Args, Data) ->
     T = vlr_server:find_tmsi(Imsi),
     case T of
 	{error, _} -> Tmsi = vlr_server:add_station(Imsi);
-	_ -> Tmsi = T
+	_ -> {ok, Tmsi} = T
     end,
     NewData = replace_data(Data, [{classmark_1, proplists:get_value(classmark_1, Args)},
 				  {imsi, Imsi},

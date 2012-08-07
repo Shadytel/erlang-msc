@@ -200,7 +200,7 @@ generate_tmsi() ->
 %%          {stop, Reason, Reply, State} |   (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 handle_cast({add_station, Imsi, Tmsi}, {Data, Temps}) ->
-    {noreply, {dict:store(Tmsi, [{tmsi, Imsi}], Data), dict:store(Imsi, Tmsi, Temps)}};
+    {noreply, {dict:store(Tmsi, [{imsi, Imsi}], Data), dict:store(Imsi, Tmsi, Temps)}};
 handle_cast({drop_station, Tmsi}, {Data, Temps}) ->
     case dict:find(Tmsi, Data) of
 	error     -> {noreply, {Data, Temps}};
