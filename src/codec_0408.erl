@@ -170,7 +170,7 @@ parse_mm_ies(_, <<>>, SoFar) ->
     SoFar;
 
 % 10.5.1.2
-parse_mm_ies([cipher_key_seq|T], <<0:1, Seq:3, Rest/bits>>, SoFar) ->
+parse_mm_ies([cipher_key_seq|T], <<_:1, Seq:3, Rest/bits>>, SoFar) ->
     parse_mm_ies(T, Rest, [{cipher_key_seq, Seq} | SoFar]);
 % 10.5.3.3
 parse_mm_ies([cm_serv_type|T], <<TypeInt:4, Rest/bits>>, SoFar) ->
