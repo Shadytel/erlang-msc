@@ -84,13 +84,19 @@ handle_bssmap({bssmap, ?BSSMAP_COMPL_L3_INF, Params}, Data, State) ->
     incoming_0408(self(), MsgBin),
     {State, Data};
 handle_bssmap({bssmap, ?BSSMAP_CLASSMARK_UPD, Args}, Data, State) ->
-    io:format("Mobile in idle got classmark~n"),
+    io:format("Mobile in ~p got classmark~n", [State]),
     Cm2 = proplists:get_value(classmark2, Args),
     Cm3 = proplists:get_value(classmark3, Args),
     Dlci = proplists:get_value(dlci, Data),
 %    send_to_mobile(Data, {bssmap, ?BSSMAP_CLASSMARK_UPD, [{mobile_id, imsi}]}),
 						% FIXME transaction probably ought not be 0
-    {State, [{classmark2, Cm2}, {classmark3, Cm3} | Data]}.
+    {State, [{classmark2, Cm2}, {classmark3, Cm3} | Data]};
+handle_bssmap({bssmap, ?BSSMAP_CLR_REQ, Args}, Data, State) ->
+    % TODO: clear down connections upon request
+    {State, Data};
+handle_bssmap({bssmap, Type, Args}, Data, State) ->
+    io:format("Mobile in ~p got unknown BSSMAP ~p: ~p~n", [State, Type, Args]),
+    {State, Data}.
 
 
 handle_sync_event(_Event, _From, StateName, Data) ->
