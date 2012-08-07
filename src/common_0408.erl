@@ -6,14 +6,24 @@
 -export([parse_classmark_1/1, encode_classmark_1/1]).
 -export([parse_classmark_2/1, encode_classmark_2/1]).
 -export([decode_0338_ascii/2, encode_0338_ascii/1]).
+-export([from_hex/1, to_hex/1]).
+
+to_hex(D) ->
+    lists:nth(D+1, "0123456789abcdef").
+
+from_hex(C) ->
+    if (C >= $0), (C =< $9)  ->  C - $0;
+       (C >= $a), (C =< $f)  ->  C - $a + 10;
+       (C >= $A), (C =< $F)  ->  C - $A + 10;
+       true -> 0
+    end.
 
 parse_mobile_id(<<Dig1:4, Odd:1, TypeBin:3, Tail/binary>>) ->
-
-    TextE = [ [ Y+ $0, X+ $0] || <<X:4,Y:4>> <= Tail],
+    TextE = [ [ to_hex(Y), to_hex(X) ] || <<X:4, Y:4>> <= Tail],
 
     case Odd of
 	2#0 -> Text = list_to_binary(TextE);
-	2#1 -> Text = list_to_binary([Dig1+16#30 | TextE])
+	2#1 -> Text = list_to_binary([to_hex(Dig1) | TextE])
     end,
     Type = case TypeBin of
 	       2#001 -> imsi;
@@ -22,10 +32,24 @@ parse_mobile_id(<<Dig1:4, Odd:1, TypeBin:3, Tail/binary>>) ->
 	       2#100 -> tmsi;
 	       _ -> undefined
 	   end,
-    {Type, Text}.
+    {Type, binary_to_list(Text)}.
 
 encode_mobile_id(Type, Text) ->
-    ok.
+    Odd = byte_size(list_to_binary(Text)) rem 2,
+    [T_Head|T_Rem] = case {Type, Odd} of
+			 {tmsi, 0} -> "F" ++ Text;
+			 {_, 0} -> Text ++ "F";
+			 _ -> Text
+		     end,
+    EncText = << << (from_hex(X)):4, (from_hex(Y)):4 >> || <<Y:8, X:8>> <= list_to_binary(T_Rem) >>,
+    T_bin = case Type of
+		imsi -> 2#001;
+		imei -> 2#010;
+		imeisv -> 2#011;
+		tmsi -> 2#100;
+		_ -> 2#000
+	    end,
+    << (from_hex(T_Head)):4, Odd:1, T_bin:3, EncText/binary >>.
 
 % encode and decode textual data as per the fucked-up packing scheme
 % described in GSM TS 03.38.
