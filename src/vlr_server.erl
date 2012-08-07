@@ -13,6 +13,7 @@
 	 get/2,
 	 get/1,
 	 find_tmsi/1,
+	 add_station/1,
 	 add_station/2,
 	 drop_station/1
 	]).
@@ -73,6 +74,12 @@ when is_list(Station), is_atom(Attr) ->
 add_station(Station, Imsi)
 when is_list(Station), is_list(Imsi) ->
     gen_server:cast(?SERVER, {add_station, Station, Imsi}).
+
+add_station(Imsi)
+when is_list(Imsi) ->
+    Station = gen_server:call(?SERVER, {pick_tmsi, Imsi}),
+    add_station(Station, Imsi),
+    Station.
 
 %% @doc Remove the given mobile station
 %% <pre>
@@ -167,8 +174,23 @@ handle_call({put, Station, Attr, Val}, _From, {Data, Temps}) ->
 		    {reply, ok, {NewData, Temps}}
 	    end
     end;
+handle_call({pick_tmsi, Imsi}, _From, {Data, Temps}) ->
+    Station = generate_tmsi(),
+    case dict:find(Station, Data) of
+	error -> % tmsi not used yet, is good choice yes
+	    {reply, Station, {Data, Temps}};
+	_ ->
+	    handle_call({pick_tmsi, Imsi}, _From, {Data, Temps})
+    end;
 handle_call(_Message, _From, State) ->
     {reply, error, State}.
+
+% a tmsi is 4 bytes long
+generate_tmsi() ->
+    [ lists:nth(I, "0123456789abcdef") || I <- [random:uniform(16), random:uniform(16),
+						random:uniform(16), random:uniform(16),
+						random:uniform(16), random:uniform(16),
+						random:uniform(16), random:uniform(16)] ].
 
 
 %% Function: handle_cast, 3
