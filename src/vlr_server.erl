@@ -2,7 +2,7 @@
 -author('Duncan Smith <Duncan@xrtc.net>').
 -behaviour(gen_server).
 
--define(SERVER, ?MODULE).
+-define(SERVER, vlr).
 
 -compile(export_all).
 
@@ -40,8 +40,8 @@
 %% @spec start_link() -> ok
 %% @end
 start_link() ->
-    io:format("Started vlr_server~n", []),
-    gen_server:start_link({local, ?SERVER}, ?SERVER, [], []).
+    io:format("Starting vlr_server~n", []),
+    Res = gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %% @doc Stops the VLR server.
 %% @spec stop() -> ok
