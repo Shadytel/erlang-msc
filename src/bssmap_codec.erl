@@ -11,10 +11,10 @@ parse_message(<<Type:8, Bin/binary>>) ->
 
 encode_message({Type, Args}) ->
     {Mand, Opt} = message_from_mt(Type),
-    erlang:list_to_binary([<< Type:1/bytes >>, encode_message(Type, Mand, Opt, Args)]).
+    erlang:list_to_binary([<< Type:8 >>, encode_message(Type, Mand, Opt, Args)]).
 
 encode_message(Type, [], [], Args) ->
-    << >>;
+    [];
 encode_message(Type, [], [Cur|Opt], Args) ->
     [encode_ie(Cur, Args) | encode_message(Type, [], Opt, Args)];
 encode_message(Type, [Cur|Mand], Opt, Args) ->

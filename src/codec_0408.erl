@@ -21,7 +21,7 @@ parse_message(?GSM48_PDISC_MM, <<Type:8, Msg/binary>>) ->
 parse_message(?GSM48_PDISC_RR, <<Type:8, Msg/binary>>) ->
     {dtap_rr, Type, Msg};
 parse_message(Discrim, <<Type:8, Msg/binary>>) ->
-    {dtap_unknown, Discrim, Type, Msg}.
+    {dtap_unknown, Discrim, {Type, Msg}}.
 
 encode_message({dtap_mm, Type, Msg}) ->
     io:format("Encoding MM ~p message ~p~n", [Type, Msg]),
@@ -344,7 +344,10 @@ enc_mm_ie(mand, ?GSM48_IE_UTC, D) ->
 
 enc_ie(?GSM48_IE_MOBILE_ID, D) ->
     case proplists:is_defined(mobile_id, D) of
-	true -> error;
+	true ->
+	    {Type, Id} = proplists:get_value(mobile_id, D),
+	    MID = common_0408:encode_mobile_id(Type, Id),
+	    << (byte_size(MID)):8, MID/bytes >>;
 	_ -> << >>
     end;
 

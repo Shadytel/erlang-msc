@@ -93,7 +93,12 @@ handle_bssmap({bssmap, ?BSSMAP_CLASSMARK_UPD, Args}, Data, State) ->
     {State, [{classmark2, Cm2}, {classmark3, Cm3} | Data]};
 handle_bssmap({bssmap, ?BSSMAP_CLR_REQ, Args}, Data, State) ->
     % TODO: clear down connections upon request
+    io:format("Mobile in ~p is clearing because of ~p~n", [State, proplists:get_value(cause, Args)]),
+    send_to_mobile(Data, {bssmap, ?BSSMAP_CLR_CMD, [{cause, proplists:get_value(cause, Args)}]}),
     {State, Data};
+handle_bssmap({bssmap, ?BSSMAP_CLR_COMPL, Args}, Data, State) ->
+    io:format("Mobile cleared~n"),
+    {st_idle, Data};
 handle_bssmap({bssmap, Type, Args}, Data, State) ->
     io:format("Mobile in ~p got unknown BSSMAP ~p: ~p~n", [State, Type, Args]),
     {State, Data}.
@@ -132,7 +137,8 @@ replace_data(Data, [{Type, Value}|T]) ->
 reg_in_vlr(Data) ->
     Imsi = proplists:get_value(imsi, Data),
     T = vlr_server:find_tmsi(Imsi),
-    if  T == undefined -> TMSI = vlr_server:add_station(Imsi);
+    if  (T == undefined) ; (T == {error, no_such_imsi}) ->
+	    TMSI = vlr_server:add_station(Imsi);
 	true -> TMSI = T
     end,
     vlr_server:put(TMSI, mm_fsm, self()),
@@ -299,7 +305,7 @@ st_wait_reest(Event, Data) ->
 location_updating(imsi, Imsi, Args, Data) ->
     T = vlr_server:find_tmsi(Imsi),
     case T of
-	{error, no_such_tmsi} -> Tmsi = vlr_server:add_station(Imsi);
+	{error, _} -> Tmsi = vlr_server:add_station(Imsi);
 	_ -> Tmsi = T
     end,
     NewData = replace_data(Data, [{classmark_1, proplists:get_value(classmark_1, Args)},
@@ -308,7 +314,8 @@ location_updating(imsi, Imsi, Args, Data) ->
     send_to_mobile(NewData, {dtap, {dtap_mm,
 				    ?GSM48_MT_MM_LOC_UPD_ACCEPT,
 				    [{lai, proplists:get_value(lai, Args)},
-				     {mobile_id, {tmsi, Tmsi}}]}});
+				     {mobile_id, {tmsi, Tmsi}}]}}),
+    {next_state, st_idle, Data};
 location_updating(tmsi, Tmsi, Args, Data) ->
     Proc = vlr_server:get(Tmsi, imsi),
     case Proc of

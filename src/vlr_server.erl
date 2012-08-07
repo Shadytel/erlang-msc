@@ -78,7 +78,7 @@ when is_list(Station), is_list(Imsi) ->
 add_station(Imsi)
 when is_list(Imsi) ->
     Station = gen_server:call(?SERVER, {pick_tmsi, Imsi}),
-    add_station(Station, Imsi),
+    add_station(Imsi, Station),
     Station.
 
 %% @doc Remove the given mobile station
@@ -143,7 +143,7 @@ init(_Args) ->
 handle_call({find_tmsi, Imsi}, _From, {Data, Temps}) ->
     case dict:find(Imsi, Temps) of
 	{ok, Tmsi} -> {reply, {ok, Tmsi}, {Data, Temps}};
-	error      -> {reply, {error, no_such_tmsi}, {Data, Temps}}
+	error      -> {reply, {error, no_such_imsi}, {Data, Temps}}
     end;
 handle_call({get, Tmsi, Attr}, _From, {Data, Temps}) ->
     case dict:find(Tmsi, Data) of
@@ -200,7 +200,7 @@ generate_tmsi() ->
 %%          {stop, Reason, Reply, State} |   (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 handle_cast({add_station, Imsi, Tmsi}, {Data, Temps}) ->
-    {noreply, {dict:store(Tmsi, [{imsi, Imsi}], Data), dict:store(Imsi, Tmsi, Temps)}};
+    {noreply, {dict:store(Tmsi, [{tmsi, Imsi}], Data), dict:store(Imsi, Tmsi, Temps)}};
 handle_cast({drop_station, Tmsi}, {Data, Temps}) ->
     case dict:find(Tmsi, Data) of
 	error     -> {noreply, {Data, Temps}};
