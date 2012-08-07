@@ -324,7 +324,12 @@ location_updating(imsi, Imsi, Args, Data) ->
     send_to_mobile(NewData, {dtap, {dtap_mm,
 				    ?GSM48_MT_MM_LOC_UPD_ACCEPT,
 				    [{lai, proplists:get_value(lai, Args)},
-				     {mobile_id, {tmsi, Tmsi}}]}}),
+				     {mobile_id, {tmsi, Tmsi}},
+				     {follow_on_proc, true}]}}),
+%    send_to_mobile(NewData, {dtap, {dtap_mm,
+%				    ?GSM48_MT_MM_INFO,
+%				    [{name_short, {0, "Toorcamp"}},
+%				     {name_long, {0, "Toorcamp"}}]}}),
     {next_state, st_idle, Data};
 location_updating(tmsi, Tmsi, Args, Data) ->
     Proc = vlr_server:get(Tmsi, imsi),
@@ -340,7 +345,12 @@ location_updating(tmsi, Tmsi, Args, Data) ->
 	_ ->
 	    send_to_mobile(Data, {dtap, {dtap_mm,
 					 ?GSM48_MT_MM_LOC_UPD_ACCEPT,
-					 [{lai, proplists:get_value(lai, Args)}] }}),
+					 [{lai, proplists:get_value(lai, Args)},
+					  {follow_on_proc, true}] }}),
+%	    send_to_mobile(Data, {dtap, {dtap_mm,
+%					 ?GSM48_MT_MM_INFO,
+%					 [{name_short, {0, "Toorcamp"}},
+%					  {name_long, {0, "Toorcamp"}}]}}),
 	    {next_state, st_idle, Data}
     end.
 
