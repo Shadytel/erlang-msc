@@ -1,4 +1,4 @@
--module(mobile_sms_fsm).
+-module(mobile_fsm_cm).
 -author('Duncan Smith <Duncan@xrtc.net>').
 -behaviour(gen_fsm).
 
