@@ -165,9 +165,9 @@ handle_call({put, Station, Attr, Val}, _From, {Data, Temps}) ->
 		    case dict:find(Val, Data) of
 			error -> % if the tmsi isn't allocated already, return okay
 			    {NewData, NewTemps} = change_tmsi(Station, Val, {Data, Temps}),
-			    {reply, {error, tmsi_already_allocated}, {NewData, NewTemps}};
+			    {reply, ok, {NewData, NewTemps}};
 			_ -> % That TMSI is already allocated, you boor
-			    {reply, ok, {Data, Temps}}
+			    {reply, {error, tmsi_already_allocated}, {Data, Temps}}
 		    end;
 		_ -> % most common case: update to parameter of existing station
 		    NewData = put_attr(Station, Attr, Val, Data),
