@@ -251,6 +251,12 @@ st_idle({dtap_mm, ?GSM48_MT_MM_CM_SERV_REQ, Args}, Data) ->
 					    ]}}),
 	    {next_state, st_idle, NewData}
     end;
+st_idle({dtap_mm, ?GSM48_MT_MM_IMSI_DETACH_IND, Args}, Data) ->
+    % cope properly
+    {tmsi, T} = proplists:get_value(mobile_id, Args),
+    vlr_server:drop_station(T),
+    send_to_mobile(Data, {bssmap, ?BSSMAP_CLR_CMD, [{cause, {0, 2#1001}}]}),
+    {next_state, st_idle, Data};
 st_idle({Tag, Type, Params}, Data) ->
     io:format("Mobile in idle got unk ~p:~p message ~p~n", [Tag, Type, Params]),
     {next_state, st_idle, Data}.
