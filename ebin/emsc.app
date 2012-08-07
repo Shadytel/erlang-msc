@@ -3,5 +3,6 @@
   {id, "emsc"},
   {vsn, "1"},
   {modules, [bcd, bssap, bssmap_codec, codec_0408, common_0408, emsc_app, mobile_mm_fsm, sccp_machine, vlr_server, vlr_super]},
-  {registered, [sccp_loop]}
+  {registered, [sccp_loop, vlr, hlr]},
+  {start_phases, [{mod, {application_starter, [emsc_app, [1, 1]]}}]}
  ]}.
