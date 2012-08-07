@@ -25,11 +25,6 @@ encode_ie(T = ?ELEM_CKT_ID, Args) ->
     Multiplex = proplists:get_value(pcm, D),
     Slot = proplists:get_value(timeslot, D),
     <<T:8, Multiplex:11, Slot:5>>;
-encode_ie(T = ?ELEM_CONN_REL_REQTED, Args) ->
-    case proplists:is_defined(release_requested, Args) of
-	true -> << T:8 >>;
-	_ -> << >>
-    end;
 encode_ie(T = ?ELEM_RSRC_AVAIL, Args) ->
     << >>;
 encode_ie(T = ?ELEM_CAUSE, Args) ->
@@ -131,7 +126,10 @@ encode_ie(T = ?ELEM_ASSIGN_REQMT, Args) ->
 encode_ie(T = ?ELEM_TALKER_FLAG, Args) ->
     << >>;
 encode_ie(T = ?ELEM_CONN_REL_REQTED, Args) ->
-    << >>;
+    case proplists:is_defined(release_requested, Args) of
+	true -> << T:8 >>;
+	_ -> << >>
+    end;
 encode_ie(T = ?ELEM_GRP_CALL_REF, Args) ->
     << >>;
 encode_ie(T = ?ELEM_EMLPP_PRIO, Args) ->
