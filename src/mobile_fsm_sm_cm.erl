@@ -18,7 +18,8 @@
 % state callbacks
 -export([st_idle/2,
 	 st_conn_pend/2,
-	 st_conn_act/2
+	 st_conn_act/2,
+	 st_wait_for_ack/2
 	]).
 
 -define(SERVER, mobile_fsm_sm_cm).
@@ -27,7 +28,7 @@ start_link(from_below, Downlink) ->
     gen_fsm:start_link(mobile_fsm_sm_cm, [below, Downlink], []);
 
 start_link(from_above, Uplink) ->
-    gen_fsm:start_link(mobile_fsm_sm_cm, [above, Uplink, UpType], []).
+    gen_fsm:start_link(mobile_fsm_sm_cm, [above, Uplink], []).
 
 % ============================================================
 % Incoming messages
@@ -39,7 +40,7 @@ incoming(FsmRef, Message) ->
 % State handlers
 
 init([Downlink]) ->
-    {ok, st_idle, [{downlink, Downlink}]}.
+    {ok, st_conn_act, [{downlink, Downlink}]}.
 
 st_idle(Msg, Data) ->
     io:format("CM in idle got message ~p~n", [Foo]),
