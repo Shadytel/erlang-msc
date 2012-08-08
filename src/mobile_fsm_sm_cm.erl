@@ -31,10 +31,15 @@ start_link(from_above, Uplink) ->
     gen_fsm:start_link(mobile_fsm_sm_cm, [above, Uplink], []).
 
 % ============================================================
-% Incoming messages
+% External messages
 
+% got a message from lower layer
 incoming(FsmRef, Message) ->
-    
+    ok.
+
+% got a message from upper layer
+send(FsmRef, Message) ->
+    ok.
 
 % ============================================================
 % State handlers
@@ -43,16 +48,20 @@ init([Downlink]) ->
     {ok, st_conn_act, [{downlink, Downlink}]}.
 
 st_idle(Msg, Data) ->
-    io:format("CM in idle got message ~p~n", [Foo]),
+    io:format("CM in idle got message ~p~n", [Msg]),
     {ok, st_idle, Data}.
 
 st_conn_pend(Msg, Data) ->
-    io:format("CM waiting for connection got ~p~n", [Foo]),
+    io:format("CM waiting for connection got ~p~n", [Msg]),
     {ok, st_conn_pend, Data}.
 
 st_conn_act(Msg, Data) ->
-    io:format("CM in connection got ~p~n", [Foo]),
+    io:format("CM in connection got ~p~n", [Msg]),
     {ok, st_conn_act, Data}.
+
+st_wait_for_ack(Msg, Data) ->
+    io:format("CM in ack-wait got ~p~n", [Msg]),
+    {ok, st_wait_for_ack, Data}.
 
 handle_event(_,_,_) ->
     ok.
@@ -67,8 +76,4 @@ terminate(_,_,_) ->
     ok.
 
 code_change(_,_,_,_) ->
-    ok.
-
-% message from lower layer
-incoming(_,_) ->
     ok.
