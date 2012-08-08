@@ -18,6 +18,48 @@ from_hex(C) ->
        true -> 0
     end.
 
+parse_dest_number(<<Ext:1, Type:3, Plan:4, T/binary>>) ->
+    case Ext of
+	1 -> <<Ext2:1, Present:2, _:3, Screen:2, Tail/binary>> = T;
+	_ -> Ext2 = 0,
+	     Present = 0,
+	     Screen = 0,
+	     Tail = T
+    end,
+    TextE = [ [ to_hex(Y), to_hex(X) ] || <<X:4, Y:4>> <= Tail],
+    
+    [{plan, case Plan of
+		2#0000 -> unknown;
+		2#0001 -> e164;
+		2#0011 -> data;
+		2#0100 -> telex;
+		2#1000 -> national;
+		2#1001 -> private;
+		_ -> reserved
+	    end},
+     {type, case Type of
+		2#000 -> unknown;
+		2#001 -> international;
+		2#010 -> national;
+		2#011 -> network;
+		2#100 -> shortcode;
+		_ -> reserved
+	    end},
+     {presentation, case Present of
+			2#00 -> allowed;
+			2#01 -> restricted;
+			2#10 -> unavail;
+			2#11 -> reserved
+		    end},
+     {screening, case Screen of
+		     2#00 -> unscreened;
+		     2#01 -> passed;
+		     2#10 -> failed;
+		     2#11 -> trusted
+		 end},
+     {number, TextE}].
+
+
 parse_mobile_id(<<Dig1:4, Odd:1, TypeBin:3, Tail/binary>>) ->
     TextE = [ [ to_hex(Y), to_hex(X) ] || <<X:4, Y:4>> <= Tail],
 
