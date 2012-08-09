@@ -14,7 +14,7 @@ parse_message(<<Skip:4, Discrim:4, Msg/binary>>) ->
 	    {}
     end.
 
-parse_message(?GSM48_PDISC_CC, <<0:1, Seq:1, Type:6, Msg/binary>>) ->
+parse_message(?GSM48_PDISC_CC, <<_:1, Seq:1, Type:6, Msg/binary>>) ->
     parse_cc_msg(Type, Seq, Msg);
 parse_message(?GSM48_PDISC_MM, <<Type:8, Msg/binary>>) ->
     parse_mm_msg(Type, Msg);

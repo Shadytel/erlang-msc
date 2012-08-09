@@ -5,8 +5,8 @@
 % and DTAP)
 
 % sccp discriminator types
--define(SCCP_DISCRIM_DTAP,	1).
--define(SCCP_DISCRIM_BSSMAP,	0).
+-define(SCCP_DISCRIM_DTAP,	2#00000001).
+-define(SCCP_DISCRIM_BSSMAP,	2#00000000).
 
 -export([parse_message/1, encode_message/1]).
 
@@ -15,8 +15,8 @@ parse_message(<<?SCCP_DISCRIM_BSSMAP:8, Length:8, Message:Length/binary, _/binar
     bssmap_codec:parse_message(Message);
 
 % DTAP message
-parse_message(<<?SCCP_DISCRIM_DTAP:8, DLCI:8, Length:8, Message:Length/binary, _/binary>>) ->
-    codec_0408:parse_message(DLCI, Message);
+parse_message(<<?SCCP_DISCRIM_DTAP:8, DLCI:8, Length:8, Message:Length/binary, _Rest/binary>>) ->
+    codec_0408:parse_message(Message);
 
 % Something else entirely
 parse_message(<<Discrim:8, Bin/binary>>) ->
