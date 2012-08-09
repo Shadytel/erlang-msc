@@ -43,7 +43,7 @@
 -define(SERVER, mobile_mm_fsm).
 
 start_link(LocalRef, RemoteRef, Sender) ->
-    io:format("Starting mobile_mm_fsm link ...~n", []),
+%    io:format("Starting mobile_mm_fsm link ...~n", []),
     gen_fsm:start_link(mobile_mm_fsm, [LocalRef, RemoteRef, Sender], []).
 
 %% ============================================================
@@ -72,7 +72,7 @@ handle_event(Event, State, Data) ->
 	{rr_rel_ind} ->
 	    {next_state, st_idle, Data};
 	{bssmap, Type, Args} ->
-	    io:format("BSSMAP message ~p: ~p~n", [Type, Args]),
+%	    io:format("BSSMAP message ~p: ~p~n", [Type, Args]),
 	    {NewState, NewData} = handle_bssmap({bssmap, Type, Args}, Data, State),
 	    {next_state, NewState, NewData};
 	_ ->
@@ -81,10 +81,11 @@ handle_event(Event, State, Data) ->
 
 handle_bssmap({bssmap, ?BSSMAP_COMPL_L3_INF, Params}, Data, State) ->
     {unparsed, MsgBin} = proplists:get_value(l3_message, Params),
+%    io:format("Looping message ~p~n", [MsgBin]),
     incoming_0408(self(), MsgBin),
     {State, Data};
 handle_bssmap({bssmap, ?BSSMAP_CLASSMARK_UPD, Args}, Data, State) ->
-    io:format("Mobile in ~p got classmark~n", [State]),
+%    io:format("Mobile in ~p got classmark~n", [State]),
     Cm2 = proplists:get_value(classmark2, Args),
     Cm3 = proplists:get_value(classmark3, Args),
     Dlci = proplists:get_value(dlci, Data),
@@ -93,11 +94,11 @@ handle_bssmap({bssmap, ?BSSMAP_CLASSMARK_UPD, Args}, Data, State) ->
     {State, [{classmark2, Cm2}, {classmark3, Cm3} | Data]};
 handle_bssmap({bssmap, ?BSSMAP_CLR_REQ, Args}, Data, State) ->
     % TODO: clear down connections upon request
-    io:format("Mobile in ~p is clearing because of ~p~n", [State, proplists:get_value(cause, Args)]),
+%    io:format("Mobile in ~p is clearing because of ~p~n", [State, proplists:get_value(cause, Args)]),
     send_to_mobile(Data, {bssmap, ?BSSMAP_CLR_CMD, [{cause, proplists:get_value(cause, Args)}]}),
     {State, Data};
 handle_bssmap({bssmap, ?BSSMAP_CLR_COMPL, Args}, Data, State) ->
-    io:format("Mobile cleared~n"),
+%    io:format("Mobile cleared~n"),
     proplists:get_value(downlink, Data) ! {sccp_released,
 					   proplists:get_value(localref, Data),
 					   proplists:get_value(remoteref, Data),
@@ -176,16 +177,16 @@ terminate(FsmRef, Cause) ->
 
 % Now I know where my downlink is
 rr_est_ind(FsmRef, Downlink) ->
-    io:format("rr_est_ind from rr to mm~n"),
+%    io:format("rr_est_ind from rr to mm~n"),
     gen_fsm:send_event(FsmRef, {rr_est_ind, Downlink}).
 
 rr_rel_ind(FsmRef) ->
-    io:format("rr_rel_ind from rr to mm~n"),
+%    io:format("rr_rel_ind from rr to mm~n"),
     gen_fsm:send_all_state_event(FsmRef, {rr_rel_ind}).
 
 
 rr_est_cnf(FsmRef) ->
-    io:format("rr_est_cnf from rr to mm~n"),
+%    io:format("rr_est_cnf from rr to mm~n"),
     gen_fsm:send_all_state_event(FsmRef, {rr_est_cnf}).
 
 %% ============================================================
@@ -217,7 +218,6 @@ st_idle_offl({rr_est_ind, Downlink}, Data) ->
 st_idle({rr_est_ind, _}, Data) ->
     {next_state, st_idle, Data};
 st_idle({dtap_mm, ?GSM48_MT_MM_LOC_UPD_REQUEST, Args}, Data) ->
-    io:format("Permitting LU of ~p by default~n", [proplists:get_value(mobile_id, Args)]),
     {ID_t, ID_value} = proplists:get_value(mobile_id, Args),
     NewData = replace_data(Data, [{classmark_1, proplists:get_value(classmark_1, Args)}]),
     location_updating(ID_t, ID_value, Args, NewData);
@@ -231,6 +231,7 @@ st_idle({dtap_mm, ?GSM48_MT_MM_CM_REEST_REQ, Args}, Data) ->
 st_idle({dtap_mm, ?GSM48_MT_MM_CM_SERV_REQ, Args}, Data) ->
     NewData = lists:append([{classmark2, proplists:get_value(classmark_2, Args)}],
 			   proplists:delete(classmark_2, Data)),
+    io:format("MM service request for ~p~n", [proplists:get_value(cm_serv_type, Args)]),
     case proplists:get_value(cm_serv_type, Args) of
 	mo_call ->
 	    mobile_cc_fsm:start_link(self()),
@@ -335,6 +336,7 @@ location_updating(tmsi, Tmsi, Args, Data) ->
     Proc = vlr_server:get(Tmsi, imsi),
     case Proc of
 	{error, no_such_tmsi} ->
+	    io:format("Disallowing ~p LU of ~p by unknown TMSI~n", [proplists:get_value(loc_upd_type, Args), proplists:get_value(mobile_id, Args)]),
 	    send_to_mobile(Data, {dtap, {dtap_mm,
 					 ?GSM48_MT_MM_LOC_UPD_REJECT,
 					 [{lai, {313, 370, 1}},
@@ -343,6 +345,7 @@ location_updating(tmsi, Tmsi, Args, Data) ->
 	    send_to_mobile(Data, {bssmap, ?BSSMAP_CLR_CMD, [{cause, {0, 2#1001}}]}),
 	    {next_state, st_idle, Data};
 	_ ->
+	    io:format("Permitting ~p LU of ~p by known TMSI~n", [proplists:get_value(loc_upd_type, Args), proplists:get_value(mobile_id, Args)]),
 	    send_to_mobile(Data, {dtap, {dtap_mm,
 					 ?GSM48_MT_MM_LOC_UPD_ACCEPT,
 					 [{lai, proplists:get_value(lai, Args)},

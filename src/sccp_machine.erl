@@ -171,7 +171,7 @@ sccp_loop(Socket) ->
 	    sccp_machine:sccp_loop(Socket);
 	{killed, LocalRef} ->
 	    % one of my workers has killed himself
-	    io:format("Removing entry ~p from SCCP local worker table~n", [LocalRef]),
+%	    io:format("Removing entry ~p from SCCP local worker table~n", [LocalRef]),
 	    erase({sccp_local_ref, LocalRef}),
 	    sccp_machine:sccp_loop(Socket);
 	Message ->
@@ -324,11 +324,11 @@ sccp_socket_loop(outgoing, LocalRef, RemoteRef, Downlink, Uplink) ->
 sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink) ->
     receive
 	{sccp_message, LocalRef, _, Msg} ->
-	    io:format("Sccp ref=~p/~p: Got a message:~n~p~n", [LocalRef, RemoteRef, Msg]),
+%	    io:format("Sccp ref=~p/~p: Got a message:~p~n", [LocalRef, RemoteRef, Msg]),
 	    mobile_mm_fsm:incoming(Uplink, Msg),
 	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_message, _, LocalRef, Msg} ->
-	    io:format("Sccp ref=~p/~p: Sending a message:~n~p~n", [LocalRef, RemoteRef, Msg]),
+%	    io:format("Sccp ref=~p/~p: Sending a message:~n~p~n", [LocalRef, RemoteRef, Msg]),
 	    Downlink ! {sccp_data_out, LocalRef, RemoteRef, Msg}, % not sure about the tuple member order
 	    sccp_machine:sccp_socket_loop(established, LocalRef, RemoteRef, Downlink, Uplink);
 	{sccp_data_out, LocalRef, RemoteRef, Msg} ->

@@ -24,7 +24,7 @@ parse_message(Discrim, <<Type:8, Msg/binary>>) ->
     {dtap_unknown, Discrim, {Type, Msg}}.
 
 encode_message({dtap_mm, Type, Msg}) ->
-    io:format("Encoding MM ~p message ~p~n", [Type, Msg]),
+%    io:format("Encoding MM ~p message ~p~n", [Type, Msg]),
     {0, encode_mm_msg(Type, Msg)};
 encode_message({dtap_cc, Type, Msg}) ->
     {0, encode_cc_msg(Type, Msg)}.

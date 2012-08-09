@@ -398,7 +398,7 @@ parse_ies([rr_cause|T], <<Cause:8, Rest/bytes>>, SoFar) ->
 parse_ies([], <<?ELEM_L3_MESSAGE:8, Rest/bytes>>, SoFar) ->
     parse_ies([l3_message], Rest, SoFar);
 parse_ies([l3_message|T], <<Len:8, Message:Len/bytes, Rest/bytes>>, SoFar) ->
-    io:format("L3 Message: ~p~n", [Message]),
+%    io:format("L3 Message: ~p~n", [Message]),
     parse_ies(T, Rest, [{l3_message, {unparsed, Message}} | SoFar]);
 
 % 3.2.2.25
