@@ -75,7 +75,8 @@ message_from_mt_cc(Type) ->
 	?GSM48_MT_CC_STATUS_ENQ -> {[], []};
 	?GSM48_MT_CC_STOP_DTMF -> {[], []};
 	?GSM48_MT_CC_STOP_DTMF_ACK -> {[], []};
-	?GSM48_MT_CC_USER_INFO -> {[?GSM48_IE_USER_USER], [?GSM48_IE_MORE_DATA]}
+	?GSM48_MT_CC_USER_INFO -> {[?GSM48_IE_USER_USER], [?GSM48_IE_MORE_DATA]};
+	_ -> {[], []}
     end.
 
 parse_cc_msg(Type, Seq, Msg) ->
@@ -138,7 +139,8 @@ message_from_mt_mm(Type) ->
 	?GSM48_MT_MM_STATUS -> {[rej_cause], []};
 	?GSM48_MT_MM_TMSI_REALL_CMD -> {[?GSM48_IE_LOCATION_AREA, ?GSM48_IE_MOBILE_ID], []};
 	?GSM48_MT_MM_TMSI_REALL_COMPL -> {[], []};
-	?GSM48_MT_MM_NULL -> {[], []}
+	?GSM48_MT_MM_NULL -> {[], []};
+	_ -> {[], []}
     end.
 
 parse_mm_msg(Type, Msg) ->
