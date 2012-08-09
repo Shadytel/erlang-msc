@@ -130,7 +130,7 @@ code_change(_Old, State, _Extra) ->
 %%          ignore |
 %%          {stop, Reason}
 init(_Args) ->
-    {ok, {dict:new(), dict:new()}}.
+    dets:open_file(vlr, [{file, "/var/emsc/vlr.dets"}]).
 
 %% Function: handle_call, 3
 %% Description: Handle incoming calls
@@ -140,47 +140,47 @@ init(_Args) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, Reply, State} |   (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
-handle_call({find_tmsi, Imsi}, _From, {Data, Temps}) ->
-    case dict:find(Imsi, Temps) of
-	{ok, Tmsi} -> {reply, {ok, Tmsi}, {Data, Temps}};
-	error      -> {reply, {error, no_such_imsi}, {Data, Temps}}
+handle_call({find_tmsi, Imsi}, _From, Data) ->
+    case dets:lookup(Data, {imsi, Imsi}) of
+	[] -> {reply, {error, no_such_imsi}, Data};
+	[{{imsi, Imsi}, Tmsi}|_] -> {reply, {ok, Tmsi}, Data}
     end;
 handle_call({get, Tmsi, Attr}, _From, {Data, Temps}) ->
-    case dict:find(Tmsi, Data) of
-	error       -> {reply, {error, no_such_tmsi}, {Data, Temps}};
-	{ok, Plist} -> {reply, {ok, proplists:get_value(Attr, Plist)}, {Data, Temps}}
+    case dets:lookup(Data, {tmsi, Tmsi}) of
+	[] -> {reply, {error, no_such_tmsi}, Data};
+	[{{tmsi, Tmsi}, Plist}|_] -> {reply, {ok, proplists:get_value(Attr, Plist)}, Data}
     end;
-handle_call({get, Tmsi}, _From, {Data, Temps}) ->
-    case dict:find(Tmsi, Data) of
-	error       -> {reply, {error, no_such_tmsi}, {Data, Temps}};
-	{ok, Plist} -> {reply, Plist, {Data, Temps}}
+handle_call({get, Tmsi}, _From, Data) ->
+    case dets:lookup(Data, {tmsi, Tmsi}) of
+	[]       -> {reply, {error, no_such_tmsi}, Data};
+	[{{tmsi, Tmsi}, Plist}] -> {reply, Plist, Data}
     end;
-handle_call({put, Station, Attr, Val}, _From, {Data, Temps}) ->
-    case dict:find(Station, Data) of
-	error ->
-	    {reply, {error, no_such_tmsi}, {Data, Temps}};
-	_ ->
+handle_call({put, Station, Attr, Val}, _From, Data) ->
+    case dets:lookup(Data, {tmsi, Station}) of
+	[] ->
+	    {reply, {error, no_such_tmsi}, Data};
+	[{{tmsi, Station}, _}] ->
 	    case Attr of
 		tmsi ->
-		    case dict:find(Val, Data) of
-			error -> % if the tmsi isn't allocated already, return okay
-			    {NewData, NewTemps} = change_tmsi(Station, Val, {Data, Temps}),
-			    {reply, ok, {NewData, NewTemps}};
+		    case dets:lookup(Data, {tmsi, Val}) of
+			[] -> % if the tmsi isn't allocated already, return okay
+			    change_tmsi(Station, Val, Data),
+			    {reply, ok, Data};
 			_ -> % That TMSI is already allocated, you boor
-			    {reply, {error, tmsi_already_allocated}, {Data, Temps}}
+			    {reply, {error, tmsi_already_allocated}, Data}
 		    end;
 		_ -> % most common case: update to parameter of existing station
-		    NewData = put_attr(Station, Attr, Val, Data),
-		    {reply, ok, {NewData, Temps}}
+		    put_attr(Station, Attr, Val, Data),
+		    {reply, ok, Data}
 	    end
     end;
-handle_call({pick_tmsi, Imsi}, _From, {Data, Temps}) ->
+handle_call({pick_tmsi, Imsi}, _From, Data) ->
     Station = generate_tmsi(),
-    case dict:find(Station, Data) of
-	error -> % tmsi not used yet, is good choice yes
-	    {reply, Station, {Data, Temps}};
+    case dets:lookup(Data, {tmsi, Station}) of
+	[] -> % tmsi not used yet, is good choice yes
+	    {reply, Station, Data};
 	_ ->
-	    handle_call({pick_tmsi, Imsi}, _From, {Data, Temps})
+	    handle_call({pick_tmsi, Imsi}, _From, Data)
     end;
 handle_call(_Message, _From, State) ->
     {reply, error, State}.
@@ -199,13 +199,18 @@ generate_tmsi() ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, Reply, State} |   (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
-handle_cast({add_station, Imsi, Tmsi}, {Data, Temps}) ->
-    {noreply, {dict:store(Tmsi, [{imsi, Imsi}], Data), dict:store(Imsi, Tmsi, Temps)}};
-handle_cast({drop_station, Tmsi}, {Data, Temps}) ->
-    case dict:find(Tmsi, Data) of
-	error     -> {noreply, {Data, Temps}};
-	{ok, Sub} -> Imsi = proplists:get_value(imsi, Sub),
-		     {noreply, {dict:erase(Tmsi, Data), dict:erase(Imsi, Temps)}}
+handle_cast({add_station, Imsi, Tmsi}, Data) ->
+    dets:insert(Data, [{{imsi, Imsi}, Tmsi}, {{tmsi, Tmsi}, [{imsi, Imsi}]}]),
+    {noreply, Data};
+handle_cast({drop_station, Tmsi}, Data) ->
+    case dets:lookup(Data, {tmsi, Tmsi}) of
+	[{{tmsi, Tmsi}, Sub}|_] ->
+	    Imsi = proplists:get_value(imsi, Sub),
+	    dets:delete(Data, {tmsi, Tmsi}),
+	    dets:delete(Data, {imsi, Imsi}),
+	    {noreply, Data};
+	_ ->
+	    {noreply, Data}
     end;
 handle_cast(stop, State) ->
     {stop, simon_says, State};
@@ -225,15 +230,16 @@ terminate(_Reason, _State) ->
 % identified only by its TMSI.
 %
 % Assumes that the old TMSI exists and the new TMSI is unallocated.
-change_tmsi(OldTmsi, NewTmsi, {DataList, TmsiList}) ->
-    Data = dict:fetch(OldTmsi, DataList),
-    Imsi = proplists:lookup(imsi, Data),
-    NewDataList = dict:store(NewTmsi, Data, dict:erase(OldTmsi, DataList)),
-    NewTmsiList = dict:store(Imsi, NewTmsi, dict:erase(Imsi, TmsiList)),
-    {NewDataList, NewTmsiList}.
+change_tmsi(OldTmsi, NewTmsi, Data) ->
+    [{{tmsi, OldTmsi}, Attrs}|_] = dets:lookup(Data, {tmsi, OldTmsi}),
+    Imsi = proplists:get_value(imsi, Attrs),
+    dets:delete(Data, {tmsi, OldTmsi}),
+    dets:delete(Data, {imsi, Imsi}),
+    dets:insert(Data, [{{tmsi, NewTmsi}, Attrs}, {{imsi, Imsi}, NewTmsi}]),
+    ok.
 
-put_attr(Tmsi, Attr, Val, DataList) ->
-    OldData = dict:fetch(Tmsi, DataList),
-    NewData = [ {Attr, Val} | proplists:delete(Attr, OldData) ],
-    NewDataList = dict:store(Tmsi, NewData, DataList),
-    NewDataList.
+put_attr(Tmsi, Attr, Val, Data) ->
+    [{{tmsi, Tmsi}, Attrs}|_] = dets:lookup(Data, {tmsi, Tmsi}),
+    NewAttrs = [ {Attr, Val} | proplists:delete(Attr, Attrs) ],
+    dets:insert(Data, {{tmsi, Tmsi}, NewAttrs}),
+    ok.
