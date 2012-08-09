@@ -121,20 +121,20 @@ message_from_mt_mm(Type) ->
     case Type of
 	% Type -> {[mandatory], [optional]}
 	?GSM48_MT_MM_AUTH_REJ -> {[], []};
-	?GSM48_MT_MM_AUTH_REQ -> {[cipher_key_seq, spare_half, rand], []};
+	?GSM48_MT_MM_AUTH_REQ -> {[spare_half, cipher_key_seq, rand], []};
 	?GSM48_MT_MM_AUTH_RESP -> {[auth_param_sres], []};
-	?GSM48_MT_MM_CM_REEST_REQ -> {[cipher_key_seq, spare_half, classmark_2, ?GSM48_IE_MOBILE_ID], [?GSM48_IE_LOCATION_AREA]};
+	?GSM48_MT_MM_CM_REEST_REQ -> {[spare_half, cipher_key_seq, classmark_2, ?GSM48_IE_MOBILE_ID], [?GSM48_IE_LOCATION_AREA]};
 	?GSM48_MT_MM_CM_SERV_ACC -> {[], []};
 	?GSM48_MT_MM_CM_SERV_REJ -> {[rej_cause], []};
 	?GSM48_MT_MM_CM_SERV_ABORT -> {[], []};
 	?GSM48_MT_MM_ABORT -> {[rej_cause], []};
-	?GSM48_MT_MM_CM_SERV_REQ -> {[cm_serv_type, cipher_key_seq, classmark_2, ?GSM48_IE_MOBILE_ID], []};
-	?GSM48_MT_MM_ID_REQ -> {[id_type, spare_half], []};
+	?GSM48_MT_MM_CM_SERV_REQ -> {[cipher_key_seq, cm_serv_type, classmark_2, ?GSM48_IE_MOBILE_ID], []};
+	?GSM48_MT_MM_ID_REQ -> {[spare_half, id_type], []};
 	?GSM48_MT_MM_ID_RESP -> {[?GSM48_IE_MOBILE_ID], []};
 	?GSM48_MT_MM_IMSI_DETACH_IND -> {[classmark_1, ?GSM48_IE_MOBILE_ID], []};
 	?GSM48_MT_MM_LOC_UPD_ACCEPT -> {[?GSM48_IE_LOCATION_AREA], [?GSM48_IE_MOBILE_ID, ?GSM48_IE_FOLLOW_ON_PROC]};
 	?GSM48_MT_MM_LOC_UPD_REJECT -> {[rej_cause], []};
-	?GSM48_MT_MM_LOC_UPD_REQUEST -> {[loc_upd_type, cipher_key_seq, ?GSM48_IE_LOCATION_AREA, classmark_1, ?GSM48_IE_MOBILE_ID], []};
+	?GSM48_MT_MM_LOC_UPD_REQUEST -> {[cipher_key_seq, loc_upd_type, ?GSM48_IE_LOCATION_AREA, classmark_1, ?GSM48_IE_MOBILE_ID], []};
 	?GSM48_MT_MM_INFO -> {[], [?GSM48_IE_NAME_LONG, ?GSM48_IE_NAME_SHORT, ?GSM48_IE_UTC, ?GSM48_IE_NET_TIME_TZ]};
 	?GSM48_MT_MM_STATUS -> {[rej_cause], []};
 	?GSM48_MT_MM_TMSI_REALL_CMD -> {[?GSM48_IE_LOCATION_AREA, ?GSM48_IE_MOBILE_ID], []};
