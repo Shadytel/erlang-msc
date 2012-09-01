@@ -217,6 +217,7 @@ st_idle_offl({rr_est_ind, Downlink}, Data) ->
 % An RR connection exists, but no MM procedures are running.
 st_idle({rr_est_ind, _}, Data) ->
     {next_state, st_idle, Data};
+
 st_idle({dtap_mm, ?GSM48_MT_MM_LOC_UPD_REQUEST, Args}, Data) ->
     {ID_t, ID_value} = proplists:get_value(mobile_id, Args),
     NewData = replace_data(Data, [{classmark_1, proplists:get_value(classmark_1, Args)}]),
@@ -228,6 +229,7 @@ st_idle({dtap_mm, ?GSM48_MT_MM_CM_REEST_REQ, Args}, Data) ->
 				 [{rej_cause, 2#00100000} % service option not supported, 10.5.3.6
 				  ]}}),
     {next_state, st_idle, Data};
+
 st_idle({dtap_mm, ?GSM48_MT_MM_CM_SERV_REQ, Args}, Data) ->
     NewData = lists:append([{classmark2, proplists:get_value(classmark_2, Args)}],
 			   proplists:delete(classmark_2, Data)),
@@ -240,7 +242,7 @@ st_idle({dtap_mm, ?GSM48_MT_MM_CM_SERV_REQ, Args}, Data) ->
 					    []}}),
 	    {next_state, st_mm_conn_act, NewData};
 	sms ->
-	    mobile_sms_fsm:start_link(self()),
+	    mobile_fsm_sm_cm:start_link(from_below, self()),
 	    send_to_mobile(NewData, {dtap, {dtap_mm,
 					    ?GSM48_MT_MM_CM_SERV_ACC,
 					    []}}),
@@ -250,12 +252,16 @@ st_idle({dtap_mm, ?GSM48_MT_MM_CM_SERV_REQ, Args}, Data) ->
 					    ?GSM48_MT_MM_CM_SERV_REJ,
 					    [{rej_cause, 2#00100000} % service option not supported, 10.5.3.6
 					    ]}}),
-	    {next_state, st_idle, NewData}
+	    {next_state, st_idle, NewData, 1000}
     end;
+
 st_idle({dtap_mm, ?GSM48_MT_MM_IMSI_DETACH_IND, Args}, Data) ->
     % cope properly
     {tmsi, T} = proplists:get_value(mobile_id, Args),
     vlr_server:drop_station(T),
+    send_to_mobile(Data, {bssmap, ?BSSMAP_CLR_CMD, [{cause, {0, 2#1001}}]}),
+    {next_state, st_idle, Data};
+st_idle(timeout, Data) ->
     send_to_mobile(Data, {bssmap, ?BSSMAP_CLR_CMD, [{cause, {0, 2#1001}}]}),
     {next_state, st_idle, Data};
 st_idle({Tag, Type, Params}, Data) ->
@@ -319,19 +325,30 @@ location_updating(imsi, Imsi, Args, Data) ->
 	{error, _} -> Tmsi = vlr_server:add_station(Imsi);
 	_ -> {ok, Tmsi} = T
     end,
-    NewData = replace_data(Data, [{classmark_1, proplists:get_value(classmark_1, Args)},
-				  {imsi, Imsi},
-				  {tmsi, Tmsi}]),
-    send_to_mobile(NewData, {dtap, {dtap_mm,
-				    ?GSM48_MT_MM_LOC_UPD_ACCEPT,
-				    [{lai, proplists:get_value(lai, Args)},
-				     {mobile_id, {tmsi, Tmsi}},
-				     {follow_on_proc, true}]}}),
-%    send_to_mobile(NewData, {dtap, {dtap_mm,
-%				    ?GSM48_MT_MM_INFO,
-%				    [{name_short, {0, "Toorcamp"}},
-%				     {name_long, {0, "Toorcamp"}}]}}),
-    {next_state, st_idle, Data};
+
+    DN = hlr_server:get(Imsi, dn),
+    case DN of
+	{error, Reason} ->
+	    io:format("Disallowing ~p LU of ~p by ~p~n", [proplists:get_value(loc_upd_type, Args), proplists:get_value(mobile_id, Args), Reason]),
+	    send_to_mobile(Data, {dtap, {dtap_mm,
+					 ?GSM48_MT_MM_LOC_UPD_REJECT,
+					 [{lai, {313, 370, 1}},
+					  {rej_cause, 2#0000010} % imsi unknown in hlr
+					 ] }}),
+	    send_to_mobile(Data, {bssmap, ?BSSMAP_CLR_CMD, [{cause, {0, 2#1001}}]}),
+	    {next_state, st_idle, Data, 100};
+	_ ->
+	    io:format("Permitting ~p LU of ~p by native MS~n", [proplists:get_value(loc_upd_type, Args), proplists:get_value(mobile_id, Args)]),
+	    send_to_mobile(Data, {dtap, {dtap_mm,
+					 ?GSM48_MT_MM_LOC_UPD_ACCEPT,
+					 [{lai, proplists:get_value(lai, Args)},
+					  {follow_on_proc, true}] }}),
+	    send_to_mobile(Data, {dtap, {dtap_mm,
+					 ?GSM48_MT_MM_INFO,
+					 [{name_short, {0, "Toorcamp"}},
+					  {name_long, {0, "Toorcamp"}}]}}),
+	    {next_state, st_idle, Data, 100}
+    end;
 location_updating(tmsi, Tmsi, Args, Data) ->
     Proc = vlr_server:get(Tmsi, imsi),
     case Proc of
@@ -343,17 +360,17 @@ location_updating(tmsi, Tmsi, Args, Data) ->
 					  {rej_cause, 2#00000100} % imsi unknown in vlr
 					 ] }}),
 	    send_to_mobile(Data, {bssmap, ?BSSMAP_CLR_CMD, [{cause, {0, 2#1001}}]}),
-	    {next_state, st_idle, Data};
+	    {next_state, st_idle, Data, 100};
 	_ ->
 	    io:format("Permitting ~p LU of ~p by known TMSI~n", [proplists:get_value(loc_upd_type, Args), proplists:get_value(mobile_id, Args)]),
 	    send_to_mobile(Data, {dtap, {dtap_mm,
 					 ?GSM48_MT_MM_LOC_UPD_ACCEPT,
 					 [{lai, proplists:get_value(lai, Args)},
 					  {follow_on_proc, true}] }}),
-%	    send_to_mobile(Data, {dtap, {dtap_mm,
-%					 ?GSM48_MT_MM_INFO,
-%					 [{name_short, {0, "Toorcamp"}},
-%					  {name_long, {0, "Toorcamp"}}]}}),
-	    {next_state, st_idle, Data}
+	    send_to_mobile(Data, {dtap, {dtap_mm,
+					 ?GSM48_MT_MM_INFO,
+					 [{name_short, {0, "Toorcamp"}},
+					  {name_long, {0, "Toorcamp"}}]}}),
+	    {next_state, st_idle, Data, 100}
     end.
 

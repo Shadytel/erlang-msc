@@ -11,7 +11,7 @@ parse_message(<<Skip:4, Discrim:4, Msg/binary>>) ->
 	0 ->
 	    parse_message(Discrim, Msg);
 	_ ->
-	    {}
+	    {Discrim, Skip, Msg}
     end.
 
 parse_message(?GSM48_PDISC_CC, <<_:1, Seq:1, Type:6, Msg/binary>>) ->
@@ -217,7 +217,7 @@ parse_mm_ies([loc_upd_type|T], <<Follow:1, _:1, TypeBin:2, Rest/bits>>, SoFar) -
                2#10 -> imsi_attach;
                2#11 -> undefined
            end,
-    parse_mm_ies(T, Rest, [{loc_upd_type, [{type, Type}, {follow_on, Follow}]} | SoFar]);
+    parse_mm_ies(T, Rest, [{loc_upd_type, Type}, {follow_on_proc, Follow == 1} | SoFar]);
 % 10.5.3.6
 parse_mm_ies([rej_cause|T], <<Cause:8, Rest/bytes>>, SoFar) ->
     parse_mm_ies(T, Rest, [{rej_cause, Cause} | SoFar]);
@@ -356,7 +356,7 @@ enc_ie(?GSM48_IE_MOBILE_ID, D) ->
 % 10.5.1.3
 enc_ie(?GSM48_IE_LOCATION_AREA, D) ->
     {MCC, MNC, LAC} = proplists:get_value(lai, D),
-    [MCC1, MCC2, MCC3] = lists:map((fun (E) -> E - $0 end), erlang:integer_to_list(MCC)),
+    [MCC1, MCC2, MCC3|_] = lists:map((fun (E) -> E - $0 end), erlang:integer_to_list(MCC)),
     [MNC1, MNC2|_] = lists:map((fun (E) -> E - $0 end), erlang:integer_to_list(MNC)),
     MNC3 = 16#f,
     <<MCC2:4, MCC1:4, MNC3:4, MCC3:4, MNC2:4, MNC1:4, LAC:16/big>>.

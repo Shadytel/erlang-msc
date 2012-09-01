@@ -35,7 +35,9 @@ start_link(from_above, Uplink) ->
 
 % got a message from lower layer
 incoming(FsmRef, Message) ->
-    ok.
+    Parsed = codec_sm_cm:parse_message(Message),
+    io:format("SM-CM got from below ~p~n", [Parsed]),
+    gen_fsm:send_event(FsmRef, Parsed).
 
 % got a message from upper layer
 send(FsmRef, Message) ->

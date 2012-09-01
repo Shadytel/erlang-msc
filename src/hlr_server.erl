@@ -78,10 +78,9 @@ code_change(_Old, State, _Extra) ->
 %%          ignore |
 %%          {stop, Reason}
 init(_Args) ->
-    dets:open_file(hlr_disk, [{access, read}, {file, "/var/emsc/hlr.dets"}]),
-    Hlr = ets:new(hlr, []),
-    dets:to_ets(hlr_disk, Hlr),
-    dets:close(hlr_disk),
+    dets:open_file(hlr, [{access, read}, {file, "/var/emsc/hlr.dets"}]),
+    Hlr = hlr,
+    io:format("Starting vlr_server~n", []),
     {ok, Hlr}.
 
 %% Function: handle_call, 3
@@ -93,16 +92,18 @@ init(_Args) ->
 %%          {stop, Reason, Reply, State} |   (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 handle_call({find_imsi, DN}, _From, Data) ->
-    case ets:lookup(Data, {dn, DN}) of
-	[]      -> {reply, {error, no_such_dn}, Data};
-	[{{dn, DN}, Imsi}] -> {reply, {ok, Imsi}, Data}
+    case dets:lookup(Data, {dn, DN}) of
+	[{{dn, DN}, Imsi}|_] ->
+	    {reply, {ok, Imsi}, Data};
+	_ ->
+	    {reply, {error, no_such_dn}, Data}
     end;
 handle_call({get, Imsi, Attr}, _From, Data) ->
-    case ets:lookup(Data, {imsi, Imsi}) of
-	[] ->
-	    {reply, {error, no_such_imsi}, Data};
-	[{{imsi, Imsi}, Plist}] ->
-	    {reply, {ok, proplists:get_value(Attr, Plist)}, Data}
+    case dets:lookup(Data, {imsi, Imsi}) of
+	[{{imsi, Imsi}, Plist}|_] ->
+	    {reply, {ok, proplists:get_value(Attr, Plist)}, Data};
+	_Foo ->
+	    {reply, {error, {no_such_imsi, _Foo}}, Data}
     end;
 handle_call(_Message, _From, State) ->
     {reply, error, State}.

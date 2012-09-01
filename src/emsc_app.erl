@@ -16,6 +16,7 @@
 start(_App, _Type) ->
     % code:load_file(ipa_proto),
     vlr_super:start_link([]),
+    hlr_super:start_link([]),
     spawn(emsc_app, link_state_handler, [init]),
     ok.
 

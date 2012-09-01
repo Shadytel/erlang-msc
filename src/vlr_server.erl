@@ -12,6 +12,7 @@
 	 put/3,
 	 get/2,
 	 get/1,
+	 get_all/0,
 	 find_tmsi/1,
 	 add_station/1,
 	 add_station/2,
@@ -106,6 +107,9 @@ get(Station, Attr) ->
 get(Station) ->
     gen_server:call(?SERVER, {get, Station}).
 
+get_all() ->
+    gen_server:call(?SERVER, {get_all}).
+
 %% @doc Find the TMSI of a mobile station given its IMSI
 %% <pre>
 %% Types:
@@ -145,6 +149,8 @@ handle_call({find_tmsi, Imsi}, _From, Data) ->
 	[] -> {reply, {error, no_such_imsi}, Data};
 	[{{imsi, Imsi}, Tmsi}|_] -> {reply, {ok, Tmsi}, Data}
     end;
+handle_call({get_all}, _From, Data) ->
+    {reply, Data, Data};
 handle_call({get, Tmsi, Attr}, _From, {Data, Temps}) ->
     case dets:lookup(Data, {tmsi, Tmsi}) of
 	[] -> {reply, {error, no_such_tmsi}, Data};
